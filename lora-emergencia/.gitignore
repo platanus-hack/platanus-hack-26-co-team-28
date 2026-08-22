@@ -1,0 +1,21 @@
+# Artefactos de compilación de Arduino
+build/
+*.bin
+*.elf
+*.hex
+*.map
+
+# Caches
+.arduino/
+.cache/
+
+# Sistema
+.DS_Store
+*.swp
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+nodo_portal_https/credentials.h
