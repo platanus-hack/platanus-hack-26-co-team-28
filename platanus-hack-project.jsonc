@@ -1,0 +1,16 @@
+{
+  // Your project's name, as it will appear on the voting page.
+  "project-name": "<FILL THIS>",
+
+  // Short one-line summary of your project (in Spanish).
+  "project-oneliner-spanish": "<FILL THIS>",
+
+  // Brief description of your project (in Spanish).
+  "project-description-spanish": "<FILL THIS>",
+
+  // Public URL where your project is deployed and running.
+  // Must be a valid URL, for example: https://my-project.vercel.app
+  // If your project is an app, put the download link here instead
+  // (for example, a URL to download an APK).
+  "deploy-url": "<FILL THIS>"
+}
