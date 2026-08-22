@@ -16,12 +16,13 @@ ORIGEN | DESTINO | TIPO | MSGID | payload...
 - `TIPO`    : uno de los 7 de abajo.
 - `MSGID`   : número de secuencia por nodo. Sirve para el ACK y para descartar duplicados.
 
-Reglas de transporte (ya en firmware): filtro por `DESTINO`, ACK dirigido, anti-duplicados
-por `(ORIGEN,MSGID)`, CAD (escucha antes de transmitir), 3 reintentos con backoff.
+Reglas de transporte: filtro por `DESTINO`, ACK dirigido, anti-duplicados por
+`(ORIGEN,MSGID)`, CAD y hasta 3 intentos para mensajes dirigidos. La Raspberry
+correlaciona los ACK de órdenes del centro; los nodos correlacionan los ACK de sus uplinks.
 
 ---
 
-## 2. Los 7 tipos de mensaje
+## 2. Tipos de mensaje
 
 | TIPO | Quién lo manda | Para qué |
 |---|---|---|
@@ -31,6 +32,9 @@ por `(ORIGEN,MSGID)`, CAD (escucha antes de transmitir), 3 reintentos con backof
 | `ACC` | operador | Aceptar la solicitud (estilo Uber). |
 | `ST`  | operador / centro | Cambiar el estado de una solicitud. |
 | `POS` | cualquiera | Ping de posición. |
+| `HB` | recurso | Heartbeat, tipo y zona conocida. |
+| `BC` | centro | Broadcast global o por zona. |
+| `BCA` | recurso | Confirmar recepción técnica de un broadcast. |
 | `ACK` | receptor | Confirmar recepción. |
 
 ---
@@ -106,25 +110,26 @@ la laptop del centro y se puede mostrar en pantalla.
 
 ```
 # Centro despacha una solicitud a un operador
-CENTRO | GRUA07 | DISP | MSGID | req_id | lat | lon | lugar
+CENTRO | GRUA07 | DISP | MSGID | req_origin | req_id | lat | lon | lugar | cat | pri | detalle
 
 # Operador acepta (GPS del operador OPCIONAL, no bloquea)
-GRUA07 | CENTRO | ACC | MSGID | req_id
+GRUA07 | CENTRO | ACC | MSGID | req_origin | req_id
 
 # Cambio de estado
-GRUA07 | CENTRO | ST | MSGID | req_id | estado
+GRUA07 | CENTRO | ST | MSGID | req_origin | req_id | estado
 ```
 
-- `req_id`: el `MSGID` original del `SOS`. Identifica la solicitud en todo su ciclo.
+- `req_origin` + `req_id`: origen y `MSGID` del `SOS`. Juntos identifican la solicitud
+  sin colisionar con la misma secuencia de otro nodo.
 - `estado`: `enruta` | `enlugar` | `resuelta` | `cancelada`.
 
 Ejemplos:
 
 ```
-CENTRO|GRUA07|DISP|12|7|4.67670|-74.04830|
-GRUA07|CENTRO|ACC|5|7
-GRUA07|CENTRO|ST|6|7|enruta
-GRUA07|CENTRO|ST|9|7|resuelta
+CENTRO|GRUA07|DISP|12|a3f21c|7|4.67670|-74.04830|-|GRUA|1|volcado
+GRUA07|CENTRO|ACC|5|a3f21c|7
+GRUA07|CENTRO|ST|6|a3f21c|7|enruta
+GRUA07|CENTRO|ST|9|a3f21c|7|resuelta
 ```
 
 ---
@@ -165,13 +170,13 @@ Reglas:
 2. Centro confirma:
    CENTRO|a3f21c|ACK|7
 3. Centro despacha a GRUA07:
-   CENTRO|GRUA07|DISP|12|7|4.67670|-74.04830|
+   CENTRO|GRUA07|DISP|12|a3f21c|7|4.67670|-74.04830|-|GRUA|1|volcado
 4. Operador acepta:
-   GRUA07|CENTRO|ACC|5|7
+   GRUA07|CENTRO|ACC|5|a3f21c|7
 5. Operador en ruta:
-   GRUA07|CENTRO|ST|6|7|enruta
+   GRUA07|CENTRO|ST|6|a3f21c|7|enruta
 6. Operador resuelve:
-   GRUA07|CENTRO|ST|9|7|resuelta
+   GRUA07|CENTRO|ST|9|a3f21c|7|resuelta
 ```
 
 ---
@@ -197,6 +202,6 @@ Máximo por paquete: 255 bytes. Ningún mensaje pasa de ~60. No hay que fragment
 cat    = GRUA | MEDICO | RESCATE | AGUA | FUEGO
 pri    = 0 | 1 | 2 | 3          (0 = vida en riesgo)
 estado = enruta | enlugar | resuelta | cancelada
-dst    = CENTRO | GRUA07 | BCAST
-tipo   = SOS | OK | DISP | ACC | ST | POS | ACK
+dst    = CENTRO | <NODE_ID> | BCAST
+tipo   = SOS | OK | DISP | ACC | ST | POS | HB | BC | BCA | ACK
 ```

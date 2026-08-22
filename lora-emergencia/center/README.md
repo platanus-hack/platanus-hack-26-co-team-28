@@ -56,7 +56,9 @@ El stack es una decisión de diseño inicial, no una implementación presente. A
 - [`PRODUCT.md`](PRODUCT.md): alcance, entidades y reglas operativas.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): módulos y seams del sistema.
 - [`PROTOCOL.md`](PROTOCOL.md): borrador de mensajes y garantías de entrega.
+- [`TOOLCHAIN.md`](TOOLCHAIN.md): instalación, compilación, flasheo y técnicas no bloqueantes.
+- [`CENTRO.md`](CENTRO.md): guía operativa del flujo Raspberry ↔ gateway ↔ recursos.
 
 ## Estado actual
 
-`center.py` es un prototipo útil para validar la cadena serial → dashboard. Todavía mantiene reportes solo en memoria y descarga Leaflet y mapas desde internet; por tanto, no representa la arquitectura offline definitiva.
+`center.py` ya conserva el estado en SQLite, opera sin CDN, recibe frames universales y puede despachar o emitir broadcasts mediante el gateway. El mapa actual es un esquema de coordenadas; la cartografía local sigue pendiente.

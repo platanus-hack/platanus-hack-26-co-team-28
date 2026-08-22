@@ -4,7 +4,7 @@
 # Ejemplo: ./scripts/flash.sh nodo_tx /dev/cu.usbserial-59260043461
 set -euo pipefail
 
-SKETCH="${1:?Uso: flash.sh <sketch> <puerto>   (sketch: nodo_tx | gateway_rx | nodo_bidir | gateway_bidir)}"
+SKETCH="${1:?Uso: flash.sh <sketch> <puerto>   (ej: nodo_recurso | gateway_bidir)}"
 PORT="${2:?Falta el puerto. Encuentralo con: arduino-cli board list}"
 
 FQBN="esp32:esp32:ttgo-lora32:UploadSpeed=115200"
@@ -12,7 +12,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [ ! -d "$REPO/$SKETCH" ]; then
   echo "No existe el sketch '$SKETCH' en $REPO"
-  echo "Opciones: nodo_tx, gateway_rx, nodo_bidir, gateway_bidir"
+  echo "Opciones: nodo_tx, gateway_rx, nodo_bidir, gateway_bidir, nodo_portal, nodo_portal_https, nodo_recurso"
   exit 1
 fi
 

@@ -51,8 +51,12 @@ lora-emergencia/
 ├── nodo_bidir/               firmware: nodo con ACK (bidireccional)
 ├── gateway_bidir/            firmware: gateway con ACK (bidireccional)
 ├── nodo_portal/              firmware MVP: WiFi "AYUDA" + portal cautivo + LoRa
+├── nodo_recurso/             firmware: recurso que recibe despachos/broadcasts + web local
 ├── center/
-│   └── center.py             MVP: dashboard en vivo del puesto de mando
+│   ├── center.py             command center offline del puesto de mando
+│   ├── command_core.py       dominio, protocolo y persistencia SQLite
+│   ├── CENTRO.md             guía operativa Raspberry ↔ gateway ↔ recursos
+│   └── TOOLCHAIN.md          instalación, compilación y diagnóstico
 ├── scripts/
 │   ├── flash.sh              compilar y subir un firmware a una placa
 │   ├── monitor.sh            leer el serial de una placa

@@ -8,15 +8,15 @@ Este documento define intenciones y garantías. El formato de bytes permanece pe
 
 - `REPORT`: reporte de emergencia.
 - `POSITION`: ubicación observada de un recurso.
-- `HEARTBEAT`: presencia y estado del nodo.
-- `DELIVERY_ACK`: recepción técnica de una orden.
-- `HUMAN_ACK`: una persona confirmó lectura o aceptación.
+- `HB`: presencia, tipo de recurso y zona conocida.
+- `ACK`: recepción técnica de una orden dirigida.
+- `BCA`: recepción técnica escalonada de un broadcast.
 - `STATUS`: cambio de estado operacional del recurso.
 
 ### Downlink: centro hacia nodo
 
-- `BROADCAST`: comunicación global, zonal o selectiva.
-- `ASSIGNMENT`: asignación a zona o incidente.
+- `BC`: comunicación global o zonal.
+- `DISP`: asignación de un recurso a un incidente.
 - `CONFIG`: configuración operacional versionada.
 - `REQUEST_STATUS`: solicitud de estado o información pendiente.
 
@@ -33,6 +33,11 @@ Este documento define intenciones y garantías. El formato de bytes permanece pe
 - Contenido específico.
 - Verificación de integridad o autenticidad, por definir.
 
+## Identidad de solicitudes
+
+Una solicitud se referencia siempre con `(request_origin, request_message_id)`. El número
+de secuencia aislado no es global y puede repetirse en nodos diferentes.
+
 ## Broadcast
 
 Un broadcast contiene:
@@ -43,7 +48,8 @@ Un broadcast contiene:
 - Momento de expiración.
 - Necesidad de confirmación humana.
 
-El dashboard sigue el estado por nodo. La recepción se consolida sin asumir que todos responderán simultáneamente.
+El dashboard sigue el estado por nodo. Los receptores envían `BCA` con retraso aleatorio;
+no se emite un ACK grupal inmediato.
 
 ## Entrega
 
