@@ -5,6 +5,7 @@ import argparse
 import json
 import threading
 import time
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -14,9 +15,26 @@ from command_core import CenterStore, RadioFrame, clean_field
 STORE = None
 GATEWAY = None
 
+# Feed de mensajes LoRa en vivo (rescatista -> centro -> recurso y de vuelta).
+RADIO_LOG = deque(maxlen=60)
+RADIO_LOCK = threading.Lock()
+
+
+def log_radio(direction, origin, destination, kind, message_id, note=""):
+    """Registra un mensaje que cruza el centro. direction: RX (llega) o TX (sale)."""
+    with RADIO_LOCK:
+        RADIO_LOG.append({
+            "dir": direction, "from": origin, "to": destination,
+            "kind": kind, "id": str(message_id), "note": note, "t": time.time(),
+        })
+    arrow = "<-" if direction == "RX" else "->"
+    print(f"[RADIO {direction}] {origin} {arrow} {destination} {kind} id={message_id} {note}".rstrip())
+
 
 class SerialGateway:
     """Owns the bidirectional serial seam and correlates directed ACKs."""
+
+    emits_tx_sent = True   # el firmware imprime TX_SENT al transmitir
 
     def __init__(self, port, on_line, baud=115200):
         self.port = port
@@ -118,6 +136,7 @@ class DemoGateway:
     """Radio adapter for exercising operational flows without hardware."""
 
     connected = True
+    emits_tx_sent = False   # sin firmware; el TX se registra desde el endpoint
 
     def send_reliable(self, _frame, attempts=3, timeout=1.6):
         return True, "DEMO_DELIVERED"
@@ -138,6 +157,7 @@ def handle_gateway_line(line):
     if line.startswith("ACK|"):
         parts = line.split("|")
         if len(parts) >= 4:
+            log_radio("RX", parts[1], parts[2], "ACK", parts[3])
             try:
                 GATEWAY.notify_ack(parts[1], parts[2], int(parts[3]))
             except ValueError:
@@ -147,9 +167,21 @@ def handle_gateway_line(line):
         try:
             frame, rssi, snr = split_gateway_rx(line)
             result = STORE.ingest(frame, rssi, snr)
+            log_radio("RX", frame.origin, frame.destination, frame.kind, frame.message_id)
             print(f"[RX] {frame.kind} {frame.origin} id={frame.message_id}: {result}")
         except ValueError as exc:
             print(f"[RX INVALIDO] {exc}: {line}")
+        return
+    if line.startswith("TX_SENT|"):
+        # El gateway confirma que transmitio por radio: TX_SENT|origin|dest|kind|msgid
+        parts = line.split("|")
+        if len(parts) >= 5:
+            log_radio("TX", parts[1], parts[2], parts[3], parts[4])
+        return
+    if line.startswith("RX_DUPLICATE|"):
+        parts = line.split("|")
+        if len(parts) >= 3:
+            log_radio("RX", parts[1], "CENTRO", "DUP", parts[2], note="duplicado")
         return
     if line.startswith(("TX_ERROR|", "RADIO_ERROR|")):
         print(f"[GATEWAY] {line}")
@@ -165,20 +197,29 @@ def seed_demo(store):
         "GRUA07|CENTRO|POS|2|4.6752|-74.0491|12|0|disponible",
     ]
     for raw in frames:
-        store.ingest(RadioFrame.parse(raw), "-55", "8.5")
+        frame = RadioFrame.parse(raw)
+        store.ingest(frame, "-55", "8.5")
+        log_radio("RX", frame.origin, frame.destination, frame.kind, frame.message_id)
+    # eventos de vuelta para ilustrar el feed centro -> recurso -> centro
+    log_radio("TX", "CENTRO", "GRUA07", "DISP", "1001")
+    log_radio("RX", "GRUA07", "CENTRO", "ACK", "1001")
+    log_radio("RX", "GRUA07", "CENTRO", "STATUS", "3")
 
 
 PAGE = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Command Center LoRa</title>
 <style>
 :root{--canvas:#fff;--paper:#f5f5f5;--border:#e5e5e5;--text:#171717;--muted:#737373;--blue:#1e40af;--critical:#b42318;--warning:#b54708;--success:#067647}
-*{box-sizing:border-box}body{margin:0;font:14px Inter,system-ui,sans-serif;background:var(--paper);color:var(--text)}button,input,select{font:inherit}.shell{display:grid;grid-template-columns:210px 1fr;min-height:100vh}.side{background:#fff;border-right:1px solid var(--border);padding:18px 12px}.brand{font-weight:700;font-size:16px;padding:4px 8px 20px}.nav{padding:10px 12px;border-radius:8px;margin:3px 0}.nav.on{background:#dbeafe;color:var(--blue);font-weight:600}.main{padding:16px;min-width:0}.top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.top h1{font-size:22px;margin:0 auto 0 0}.badge{border-radius:999px;padding:6px 10px;background:#fff;border:1px solid var(--border);font-size:12px}.ok{color:var(--success)}.bad{color:var(--critical)}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}.card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px}.metric b{font-size:24px;display:block}.metric span,.muted{color:var(--muted);font-size:12px}.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,.8fr);gap:8px}.map{height:390px;position:relative;overflow:hidden;background-color:#fafafa;background-image:linear-gradient(#e5e5e5 1px,transparent 1px),linear-gradient(90deg,#e5e5e5 1px,transparent 1px);background-size:32px 32px}.map:after{content:'Esquema offline · cartografía local pendiente';position:absolute;left:12px;bottom:10px;color:var(--muted);font-size:11px}.dot{position:absolute;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #aaa}.dot.req{background:var(--critical)}.dot.res{background:var(--success)}h2{font-size:15px;margin:0 0 10px}.queue{max-height:390px;overflow:auto}.row{border-top:1px solid var(--border);padding:10px 0}.row:first-child{border-top:0}.rowhead{display:flex;gap:6px;align-items:center}.pill{border-radius:999px;padding:3px 7px;background:#f5f5f5;font-size:11px}.p0{color:var(--critical);background:#fef3f2}.p1{color:var(--warning);background:#fffaeb}.actions{display:flex;gap:6px;margin-top:8px}.btn{border:1px solid var(--border);background:#fff;padding:7px 10px;border-radius:8px;cursor:pointer}.primary{background:var(--blue);border-color:var(--blue);color:#fff}.broadcast{margin-top:8px}.broadcast textarea{width:100%;min-height:62px;border:1px solid #aaa;border-radius:6px;padding:8px}.broadcast .controls{display:flex;gap:6px;margin-top:6px}.broadcast select{border:1px solid var(--border);border-radius:8px;padding:7px;background:#fff}.below{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.list{max-height:260px;overflow:auto}@media(max-width:900px){.shell{grid-template-columns:1fr}.side{display:none}.layout,.below{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
-</style></head><body><div class="shell"><aside class="side"><div class="brand">Command Center</div><div class="nav on">Resumen</div><div class="nav">Mapa</div><div class="nav">Reportes</div><div class="nav">Recursos</div><div class="nav">Zonas</div><div class="nav">Broadcast</div><div class="nav">Red LoRa</div></aside><main class="main"><div class="top"><h1>Situación operacional</h1><span id="gateway" class="badge">Gateway</span><span class="badge">Modo offline</span><span id="clock" class="badge"></span></div><div id="metrics" class="metrics"></div><div class="layout"><div id="map" class="card map"></div><div class="card"><h2>Cola priorizada</h2><div id="requests" class="queue"></div></div></div><div class="below"><div class="card"><h2>Recursos</h2><div id="resources" class="list"></div></div><div><div class="card broadcast"><h2>Broadcast</h2><textarea id="bcmsg" maxlength="80" placeholder="Mensaje corto para los recursos"></textarea><div class="controls"><select id="scope"><option value="ALL">Todos</option><option value="ZONE:NORTE">Zona Norte</option></select><select id="priority"><option>NORMAL</option><option>URGENT</option></select><button class="btn primary" onclick="broadcastMsg()">Revisar y enviar</button></div><div id="bcstatus" class="muted" style="margin-top:8px"></div></div><div class="card" style="margin-top:8px"><h2>Personas a salvo</h2><div id="safe" class="list"></div></div></div></div></main></div>
+*{box-sizing:border-box}body{margin:0;font:14px Inter,system-ui,sans-serif;background:var(--paper);color:var(--text)}button,input,select{font:inherit}.shell{display:grid;grid-template-columns:210px 1fr;min-height:100vh}.side{background:#fff;border-right:1px solid var(--border);padding:18px 12px}.brand{font-weight:700;font-size:16px;padding:4px 8px 20px}.nav{padding:10px 12px;border-radius:8px;margin:3px 0}.nav.on{background:#dbeafe;color:var(--blue);font-weight:600}.main{padding:16px;min-width:0}.top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.top h1{font-size:22px;margin:0 auto 0 0}.badge{border-radius:999px;padding:6px 10px;background:#fff;border:1px solid var(--border);font-size:12px}.ok{color:var(--success)}.bad{color:var(--critical)}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}.card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px}.metric b{font-size:24px;display:block}.metric span,.muted{color:var(--muted);font-size:12px}.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,.8fr);gap:8px}.map{height:390px;position:relative;overflow:hidden;background-color:#fafafa;background-image:linear-gradient(#e5e5e5 1px,transparent 1px),linear-gradient(90deg,#e5e5e5 1px,transparent 1px);background-size:32px 32px}.map:after{content:'Esquema offline · cartografía local pendiente';position:absolute;left:12px;bottom:10px;color:var(--muted);font-size:11px}.dot{position:absolute;width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 0 1px #aaa}.dot.req{background:var(--critical)}.dot.res{background:var(--success)}h2{font-size:15px;margin:0 0 10px}.queue{max-height:390px;overflow:auto}.row{border-top:1px solid var(--border);padding:10px 0}.row:first-child{border-top:0}.rowhead{display:flex;gap:6px;align-items:center}.pill{border-radius:999px;padding:3px 7px;background:#f5f5f5;font-size:11px}.p0{color:var(--critical);background:#fef3f2}.p1{color:var(--warning);background:#fffaeb}.actions{display:flex;gap:6px;margin-top:8px}.btn{border:1px solid var(--border);background:#fff;padding:7px 10px;border-radius:8px;cursor:pointer}.primary{background:var(--blue);border-color:var(--blue);color:#fff}.broadcast{margin-top:8px}.broadcast textarea{width:100%;min-height:62px;border:1px solid #aaa;border-radius:6px;padding:8px}.broadcast .controls{display:flex;gap:6px;margin-top:6px}.broadcast select{border:1px solid var(--border);border-radius:8px;padding:7px;background:#fff}.below{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}.list{max-height:260px;overflow:auto}.evt{display:flex;align-items:center;gap:8px;border-top:1px solid var(--border);padding:8px 0;font-size:13px}.evt:first-child{border-top:0}.evt.fresh{background:#fffaeb}.evt .hora{color:var(--muted);font-size:11px;min-width:58px}.evt .who{font-weight:600}.evt .arw{color:var(--muted)}.evt .tag{margin-left:auto;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600;background:#f5f5f5}.tag.SOS{color:var(--critical);background:#fef3f2}.tag.ACK{color:var(--blue);background:#dbeafe}.tag.DISP{color:#6d28d9;background:#ede9fe}.tag.BC{color:var(--warning);background:#fffaeb}.tag.STATUS,.tag.POS,.tag.HB{color:var(--success);background:#ecfdf3}.who.Rescatista{color:var(--critical)}.who.Centro{color:var(--blue)}.who.Recurso{color:#6d28d9}@media(max-width:900px){.shell{grid-template-columns:1fr}.side{display:none}.layout,.below{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
+</style></head><body><div class="shell"><aside class="side"><div class="brand">Command Center</div><div class="nav on">Resumen</div><div class="nav">Mapa</div><div class="nav">Reportes</div><div class="nav">Recursos</div><div class="nav">Zonas</div><div class="nav">Broadcast</div><div class="nav">Red LoRa</div></aside><main class="main"><div class="top"><h1>Situación operacional</h1><span id="gateway" class="badge">Gateway</span><span class="badge">Modo offline</span><span id="clock" class="badge"></span></div><div id="metrics" class="metrics"></div><div class="layout"><div id="map" class="card map"></div><div class="card"><h2>Cola priorizada</h2><div id="requests" class="queue"></div></div></div><div class="card" style="margin-top:8px"><h2>Red LoRa · mensajes en vivo</h2><div id="radiofeed" class="list" style="max-height:240px"></div></div><div class="below"><div class="card"><h2>Recursos</h2><div id="resources" class="list"></div></div><div><div class="card broadcast"><h2>Broadcast</h2><textarea id="bcmsg" maxlength="80" placeholder="Mensaje corto para los recursos"></textarea><div class="controls"><select id="scope"><option value="ALL">Todos</option><option value="ZONE:NORTE">Zona Norte</option></select><select id="priority"><option>NORMAL</option><option>URGENT</option></select><button class="btn primary" onclick="broadcastMsg()">Revisar y enviar</button></div><div id="bcstatus" class="muted" style="margin-top:8px"></div></div><div class="card" style="margin-top:8px"><h2>Personas a salvo</h2><div id="safe" class="list"></div></div></div></div></main></div>
 <script>
 let DATA={requests:[],safe:[],resources:[],broadcasts:[],gateway:false};const e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function ago(t){let s=Math.max(0,Date.now()/1000-t);return s<60?Math.floor(s)+'s':s<3600?Math.floor(s/60)+'m':Math.floor(s/3600)+'h'}
+function rol(id){id=String(id||'');if(id==='CENTRO')return'Centro';if(/GRUA|OPER|RES|BOMB|AMBU/i.test(id))return'Recurso';if(id==='BCAST')return'Todos';return'Rescatista'}
+function hhmm(t){let d=new Date(t*1000),p=n=>('0'+n).slice(-2);return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())}
+function renderRadio(){let evs=DATA.radio||[],box=document.getElementById('radiofeed');if(!box)return;if(!evs.length){box.innerHTML='<p class="muted">Sin tráfico de radio todavía.</p>';return}box.innerHTML=evs.slice(-14).reverse().map(x=>{let a=rol(x.from),b=rol(x.to),fresh=(Date.now()/1000-x.t)<6?'fresh':'',note=x.note?` <span class="muted">(${e(x.note)})</span>`:'';return `<div class="evt ${fresh}"><span class="hora">${hhmm(x.t)}</span><span class="who ${a}">${a}</span><span class="arw">&#8594;</span><span class="who ${b}">${b}</span>${note}<span class="tag ${e(x.kind)}">${e(x.kind)} #${e(x.id)}</span></div>`}).join('')}
 function plot(){let all=[...DATA.requests.filter(x=>x.lat&&x.lon).map(x=>({...x,k:'req'})),...DATA.resources.filter(x=>x.lat&&x.lon).map(x=>({...x,k:'res'}))];let map=document.getElementById('map');map.querySelectorAll('.dot').forEach(x=>x.remove());if(!all.length)return;let la=all.map(x=>+x.lat),lo=all.map(x=>+x.lon),minla=Math.min(...la)-.002,maxla=Math.max(...la)+.002,minlo=Math.min(...lo)-.002,maxlo=Math.max(...lo)+.002;all.forEach(x=>{let d=document.createElement('div');d.className='dot '+x.k;d.style.left=(8+84*((+x.lon-minlo)/(maxlo-minlo)))+'%';d.style.top=(8+78*(1-(+x.lat-minla)/(maxla-minla)))+'%';d.title=x.k==='req'?'Reporte '+x.id:x.node;map.appendChild(d)})}
-function render(){let open=DATA.requests.filter(x=>!['RESUELTA','CANCELADA'].includes(x.estado)),critical=open.filter(x=>x.pri===0),unassigned=open.filter(x=>x.estado==='PENDIENTE');metrics.innerHTML=[[critical.length,'Críticos'],[unassigned.length,'Sin asignar'],[DATA.resources.length,'Recursos'],[DATA.requests.length,'Reportes']].map(x=>`<div class="card metric"><b>${x[0]}</b><span>${x[1]}</span></div>`).join('');gateway.textContent=DATA.gateway?'Gateway conectado':'Gateway desconectado';gateway.className='badge '+(DATA.gateway?'ok':'bad');requests.innerHTML=open.length?open.map(x=>`<div class="row"><div class="rowhead"><b>#${x.id} ${e(x.cat)}</b><span class="pill p${x.pri}">Prioridad ${x.pri}</span><span class="pill">${e(x.estado)}</span></div><div>${e(x.detalle||x.lugar||'Sin detalle')}</div><div class="muted">${e(x.node)} · hace ${ago(x.t)} · ${e(x.operador||'sin recurso')}</div>${x.estado==='PENDIENTE'?`<div class="actions"><button class="btn primary" onclick="dispatch(${x.id})">Asignar recurso</button></div>`:''}</div>`).join(''):'<p class="muted">Sin solicitudes abiertas.</p>';resources.innerHTML=DATA.resources.length?DATA.resources.map(x=>`<div class="row"><b>${e(x.node)}</b> · ${e(x.kind)} <span class="pill">${e(x.state)}</span><div class="muted">Zona ${e(x.zone)} · visto hace ${ago(x.last_seen)}</div></div>`).join(''):'<p class="muted">Sin recursos registrados.</p>';safe.innerHTML=DATA.safe.length?DATA.safe.map(x=>`<div class="row"><b>${e(x.nombre)}</b><div class="muted">${e(x.doc)} · hace ${ago(x.t)}</div></div>`).join(''):'<p class="muted">Sin registros.</p>';let b=DATA.broadcasts[0];bcstatus.textContent=b?`Último: ${b.message} · ${b.received_count} confirmaciones técnicas`:'Sin broadcasts enviados';plot()}
+function render(){let open=DATA.requests.filter(x=>!['RESUELTA','CANCELADA'].includes(x.estado)),critical=open.filter(x=>x.pri===0),unassigned=open.filter(x=>x.estado==='PENDIENTE');metrics.innerHTML=[[critical.length,'Críticos'],[unassigned.length,'Sin asignar'],[DATA.resources.length,'Recursos'],[DATA.requests.length,'Reportes']].map(x=>`<div class="card metric"><b>${x[0]}</b><span>${x[1]}</span></div>`).join('');gateway.textContent=DATA.gateway?'Gateway conectado':'Gateway desconectado';gateway.className='badge '+(DATA.gateway?'ok':'bad');requests.innerHTML=open.length?open.map(x=>`<div class="row"><div class="rowhead"><b>#${x.id} ${e(x.cat)}</b><span class="pill p${x.pri}">Prioridad ${x.pri}</span><span class="pill">${e(x.estado)}</span></div><div>${e(x.detalle||x.lugar||'Sin detalle')}</div><div class="muted">${e(x.node)} · hace ${ago(x.t)} · ${e(x.operador||'sin recurso')}</div>${x.estado==='PENDIENTE'?`<div class="actions"><button class="btn primary" onclick="dispatch(${x.id})">Asignar recurso</button></div>`:''}</div>`).join(''):'<p class="muted">Sin solicitudes abiertas.</p>';resources.innerHTML=DATA.resources.length?DATA.resources.map(x=>`<div class="row"><b>${e(x.node)}</b> · ${e(x.kind)} <span class="pill">${e(x.state)}</span><div class="muted">Zona ${e(x.zone)} · visto hace ${ago(x.last_seen)}</div></div>`).join(''):'<p class="muted">Sin recursos registrados.</p>';safe.innerHTML=DATA.safe.length?DATA.safe.map(x=>`<div class="row"><b>${e(x.nombre)}</b><div class="muted">${e(x.doc)} · hace ${ago(x.t)}</div></div>`).join(''):'<p class="muted">Sin registros.</p>';let b=DATA.broadcasts[0];bcstatus.textContent=b?`Último: ${b.message} · ${b.received_count} confirmaciones técnicas`:'Sin broadcasts enviados';renderRadio();plot()}
 async function dispatch(id){let resource=prompt('ID del nodo recurso','GRUA07');if(!resource)return;if(!confirm('¿Asignar la solicitud #'+id+' a '+resource+'?'))return;let r=await fetch('/api/dispatch?id='+id+'&resource='+encodeURIComponent(resource),{method:'POST'}),d=await r.json();if(!r.ok)alert(d.error||'No se pudo entregar');tick()}
 async function broadcastMsg(){let message=bcmsg.value.trim();if(!message)return alert('Escribe un mensaje');let s=scope.value,p=priority.value;if(!confirm(`Enviar a ${s}: ${message}`))return;let r=await fetch('/api/broadcast?scope='+encodeURIComponent(s)+'&priority='+p+'&message='+encodeURIComponent(message),{method:'POST'}),d=await r.json();if(!r.ok)alert(d.error||'No se pudo transmitir');else{alert('Broadcast transmitido; confirmaciones llegarán de forma escalonada');bcmsg.value=''}}
 async function tick(){try{DATA=await(await fetch('/api/state')).json();render()}catch(e){gateway.textContent='Centro sin respuesta';gateway.className='badge bad'}}clock.textContent=new Date().toLocaleTimeString();setInterval(()=>clock.textContent=new Date().toLocaleTimeString(),1000);tick();setInterval(tick,3000);
@@ -201,6 +242,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/state"):
             state = STORE.state()
             state["gateway"] = bool(GATEWAY and GATEWAY.connected)
+            with RADIO_LOCK:
+                state["radio"] = list(RADIO_LOG)
             self.send_json(200, state)
             return
         body = PAGE.encode()
@@ -222,6 +265,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(503, {"ok": False, "error": result})
                     return
                 STORE.mark_dispatched(request_id, resource, frame)
+                if GATEWAY and not getattr(GATEWAY, "emits_tx_sent", False):
+                    log_radio("TX", frame.origin, frame.destination, frame.kind, frame.message_id)
                 self.send_json(200, {"ok": True, "messageId": frame.message_id})
             except (ValueError, TypeError) as exc:
                 self.send_json(409, {"ok": False, "error": str(exc)})
@@ -240,6 +285,8 @@ class Handler(BaseHTTPRequestHandler):
             sent = GATEWAY.send_broadcast(frame) if GATEWAY else False
             if sent:
                 STORE.record_broadcast(frame)
+                if GATEWAY and not getattr(GATEWAY, "emits_tx_sent", False):
+                    log_radio("TX", frame.origin, frame.destination, frame.kind, frame.message_id)
                 self.send_json(200, {"ok": True, "messageId": frame.message_id})
             else:
                 self.send_json(503, {"ok": False, "error": "GATEWAY_OFFLINE"})
