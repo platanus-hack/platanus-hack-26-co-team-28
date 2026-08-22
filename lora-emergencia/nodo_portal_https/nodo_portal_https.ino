@@ -22,11 +22,13 @@
 #define LORA_DIO1 33
 SX1276 radio = new Module(LORA_CS, LORA_DIO0, LORA_RST, LORA_DIO1);
 
-const char* AP_SSID = "AYUDA";
+const char* AP_SSID = "AYUDA_AQUI_RESCATISTA_911";
 const char* DOMAIN = "ayuda.homiapp.xyz";
 IPAddress apIP(192, 168, 4, 1);
 DNSServer dnsServer;
 
+// Direccionamiento estandar (frame: ORIGEN|DESTINO|TIPO|MSGID|payload...)
+#define DST_CENTRO "CENTRO"
 String NODE_ID = "a3f21c";
 String NODE_LAT = "4.6767";
 String NODE_LON = "-74.0483";
@@ -55,67 +57,157 @@ String field(String body, String key) {
 }
 
 // ---------- LoRa ----------
-bool enviarReporte(String tipo, String detalle, String lat, String lon) {
-  detalle.replace("|", " "); detalle.replace("\n", " "); detalle.replace("\r", " ");
-  if (detalle.length() > 50) detalle = detalle.substring(0, 50);
-  if (detalle.length() == 0) detalle = "-";
-  if (lat.length() == 0) lat = NODE_LAT;
-  if (lon.length() == 0) lon = NODE_LON;
-  String msg = NODE_ID + "|" + tipo + "|" + detalle + "|" + lat + "|" + lon + "|" + String(seq);
-  seq++;
-  Serial.println("[NODO] TX: " + msg);
-  radio.transmit(msg);
-  unsigned long t0 = millis(); bool acked = false;
-  while (millis() - t0 < 1200 && !acked) {
-    String ack; int st = radio.receive(ack);
-    if (st == RADIOLIB_ERR_NONE && ack.startsWith("ACK|" + NODE_ID)) acked = true;
+// Extrae el campo idx (0-based) de un string separado por '|'
+String tok(const String& s, int idx) {
+  int start = 0, count = 0;
+  for (int i = 0; i <= (int)s.length(); i++) {
+    if (i == (int)s.length() || s[i] == '|') {
+      if (count == idx) return s.substring(start, i);
+      count++;
+      start = i + 1;
+    }
   }
-  Serial.println(acked ? "[NODO] ACK OK" : "[NODO] sin ACK");
+  return "";
+}
+
+// Envio con CAD (listen-before-talk): escucha el canal antes de transmitir para
+// reducir colisiones cuando hay muchos usuarios. Estandar de LoRa.
+void enviarCAD(String msg) {
+  for (int i = 0; i < 6; i++) {
+    if (radio.scanChannel() == RADIOLIB_CHANNEL_FREE) break;
+    delay(random(20, 90));
+  }
+  radio.transmit(msg);
+}
+
+// Limpia un texto para que no rompa el formato '|' y no sea muy largo
+String san(String s) {
+  s.replace("|", " "); s.replace("\n", " "); s.replace("\r", " ");
+  if (s.length() > 50) s = s.substring(0, 50);
+  return s;
+}
+
+// Prioridad por defecto segun la categoria (0 = vida en riesgo)
+String priDefault(String cat) {
+  if (cat == "MEDICO" || cat == "RESCATE" || cat == "FUEGO") return "0";
+  if (cat == "GRUA") return "1";
+  return "3";
+}
+
+// Envio confiable de un frame ya armado: CAD + 3 reintentos + espera de ACK dirigido.
+bool enviarFrame(String msg, int id) {
+  bool acked = false;
+  int intento = 0;
+  while (!acked && intento < 3) {
+    Serial.println("[NODO] TX (intento " + String(intento + 1) + "): " + msg);
+    enviarCAD(msg);
+    unsigned long t0 = millis();
+    while (millis() - t0 < 1000 && !acked) {
+      String ack; int st = radio.receive(ack);
+      // ACK dirigido: CENTRO|<mi_id>|ACK|<msgid>
+      if (st == RADIOLIB_ERR_NONE &&
+          tok(ack, 1) == NODE_ID && tok(ack, 2) == "ACK" && tok(ack, 3) == String(id)) {
+        acked = true;
+      }
+    }
+    if (!acked) { intento++; delay(random(100, 500)); }
+  }
+  Serial.println(acked ? "[NODO] ACK OK (id " + String(id) + ")" : "[NODO] sin ACK tras 3 intentos");
   return acked;
+}
+
+// SOS: pedir ayuda. Frame: ORIGEN|CENTRO|SOS|MSGID|cat|pri|lat|lon|lugar|detalle
+bool enviarSOS(String cat, String pri, String lat, String lon, String lugar, String detalle) {
+  lugar = san(lugar); detalle = san(detalle);
+  if (pri.length() == 0) pri = priDefault(cat);
+  if (lugar.length() == 0) lugar = "-";
+  if (detalle.length() == 0) detalle = "-";
+  int id = seq++;
+  String msg = NODE_ID + "|" DST_CENTRO "|SOS|" + String(id) + "|" +
+               cat + "|" + pri + "|" + lat + "|" + lon + "|" + lugar + "|" + detalle;
+  return enviarFrame(msg, id);
+}
+
+// OK: reportarse a salvo con datos identificables.
+// Frame: ORIGEN|CENTRO|OK|MSGID|nombre|doc|lat|lon|lugar
+bool enviarOK(String nombre, String doc, String lat, String lon, String lugar) {
+  nombre = san(nombre); doc = san(doc); lugar = san(lugar);
+  if (lugar.length() == 0) lugar = "-";
+  int id = seq++;
+  String msg = NODE_ID + "|" DST_CENTRO "|OK|" + String(id) + "|" +
+               nombre + "|" + doc + "|" + lat + "|" + lon + "|" + lugar;
+  return enviarFrame(msg, id);
 }
 
 // ---------- pagina HTTPS ----------
 static const char PAGE_HTTPS[] = R"HTML(<!doctype html><html lang='es'><head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width,initial-scale=1'>
-<style>body{font-family:-apple-system,Arial,sans-serif;margin:0;color:#111}
+<style>body{font-family:-apple-system,Arial,sans-serif;margin:0;color:#111;background:#f5f6f8}
 .wrap{max-width:520px;margin:0 auto;padding:16px}
 .hdr{background:#d92d20;color:#fff;padding:16px;border-radius:0 0 12px 12px;text-align:center}
 .hdr h1{margin:0;font-size:22px}
-label{display:block;font-weight:700;margin:14px 0 6px}
+.card{background:#fff;border-radius:12px;padding:14px;margin-top:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+h2{font-size:16px;margin:0 0 10px}
+label{display:block;font-weight:700;margin:12px 0 6px;font-size:14px}
 input{width:100%;padding:14px;font-size:16px;border:2px solid #ccc;border-radius:10px;box-sizing:border-box}
-button{width:100%;padding:18px;font-size:19px;font-weight:700;border:0;border-radius:12px;margin-top:10px;color:#fff}
-.b1{background:#1570ef}.b2{background:#d92d20}.b3{background:#b42318}.b4{background:#067647}
+button{width:100%;padding:18px;font-size:18px;font-weight:700;border:0;border-radius:12px;margin-top:10px;color:#fff}
+.b1{background:#b42318}.b2{background:#d92d20}.b3{background:#c2410c}.b4{background:#1570ef}.b5{background:#067647}
 #msg{padding:16px;border-radius:12px;font-size:17px;margin-top:12px;display:none}
 .ok{background:#ecfdf3;border:2px solid #067647;color:#054f31}
 .warn{background:#fffaeb;border:2px solid #b54708;color:#7a2e0e}
-.note{font-size:12px;color:#666;margin-top:14px;text-align:center}</style></head><body>
-<div class='wrap'><div class='hdr'><h1>PUNTO DE AYUDA</h1></div>
-<label>Que necesitas? Toca un boton.</label>
-<button class='b1' onclick="enviar('agua')">Agua / comida</button>
-<button class='b2' onclick="enviar('medico')">Ayuda medica</button>
-<button class='b3' onclick="enviar('rescate')">Rescate (hay atrapados)</button>
-<button class='b4' onclick="enviar('asalvo')">Estoy a salvo</button>
-<label>Donde estas? (opcional: Plus Code o direccion)</label>
-<input id='det' maxlength='50' placeholder='ej: 6GCR+2X, apto 401'>
+.note{font-size:12px;color:#666;margin-top:8px}</style></head><body>
+<div class='wrap'><div class='hdr'><h1>PUNTO DE AYUDA 911</h1></div>
 <div id='msg'></div>
-<p class='note'>Tu ubicacion GPS se envia sola si la autorizas.</p></div>
+<div class='card'>
+ <h2>Pedir ayuda</h2>
+ <label>Donde estas? (si no hay GPS, escribe el lugar)</label>
+ <input id='lugar' maxlength='50' placeholder='ej: Portal 80 con calle 13, torre B'>
+ <label>Detalle (opcional)</label>
+ <input id='det' maxlength='50' placeholder='ej: 2 personas atrapadas, sotano'>
+ <button class='b1' onclick="sos('RESCATE','0')">Rescate: hay atrapados</button>
+ <button class='b2' onclick="sos('MEDICO','0')">Ayuda medica urgente</button>
+ <button class='b3' onclick="sos('GRUA','1')">Grua / vehiculo pesado</button>
+ <button class='b4' onclick="sos('AGUA','3')">Agua / comida</button>
+</div>
+<div class='card'>
+ <h2>Estoy a salvo</h2>
+ <p class='note'>Deja tus datos. Si aparece internet, tu familia podra saber que estas bien.</p>
+ <label>Nombre completo</label>
+ <input id='nombre' maxlength='50' placeholder='ej: Juan Perez'>
+ <label>Documento (cedula)</label>
+ <input id='doc' maxlength='50' placeholder='ej: CC 1032456'>
+ <button class='b5' onclick="salvo()">Reportarme a salvo</button>
+</div>
+<p class='note' style='text-align:center'>Tu ubicacion GPS se envia sola si la autorizas.</p></div>
 <script>
-function post(tipo,lat,lon){
- var det=document.getElementById('det').value;
- var b='tipo='+encodeURIComponent(tipo)+'&lat='+lat+'&lon='+lon+'&detalle='+encodeURIComponent(det);
- fetch('/report',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b})
-  .then(r=>r.text()).then(t=>{var m=document.getElementById('msg');m.style.display='block';
-   if(t.indexOf('OK')>=0){m.className='ok';m.innerHTML='<b>Confirmado por el puesto de mando.</b> Quedate cerca de este punto.';}
-   else{m.className='warn';m.innerHTML='<b>Guardado. Reintentando...</b> Espera cerca de este punto.';}})
-  .catch(e=>{var m=document.getElementById('msg');m.style.display='block';m.className='warn';m.innerHTML='Error de envio. Intenta otra vez.';});
-}
-function enviar(tipo){
- var m=document.getElementById('msg');m.style.display='block';m.className='warn';m.innerHTML='Obteniendo tu ubicacion...';
- if(!navigator.geolocation){post(tipo,'','');return;}
+function val(id){return document.getElementById(id).value;}
+function enc(s){return encodeURIComponent(s);}
+function show(t,cls){var m=document.getElementById('msg');m.style.display='block';m.className=cls;m.innerHTML=t;}
+function gps(cb){
+ if(!navigator.geolocation){cb('','');return;}
  navigator.geolocation.getCurrentPosition(
-  function(p){post(tipo,p.coords.latitude.toFixed(6),p.coords.longitude.toFixed(6));},
-  function(err){post(tipo,'','');},
+  function(p){cb(p.coords.latitude.toFixed(5),p.coords.longitude.toFixed(5));},
+  function(e){cb('','');},
   {enableHighAccuracy:true,timeout:8000,maximumAge:0});
+}
+function post(body){
+ fetch('/report',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
+  .then(r=>r.text()).then(t=>{
+   if(t.indexOf('OK')>=0)show('<b>Confirmado por el puesto de mando.</b> Quedate en un lugar seguro.','ok');
+   else show('<b>Guardado. Reintentando por radio...</b> Espera aqui.','warn');})
+  .catch(e=>show('Error de envio. Intenta otra vez.','warn'));
+}
+function sos(cat,pri){
+ show('Obteniendo tu ubicacion...','warn');
+ var lugar=val('lugar'),det=val('det');
+ gps(function(la,lo){post('accion=sos&cat='+cat+'&pri='+pri+'&lat='+la+'&lon='+lo+'&lugar='+enc(lugar)+'&detalle='+enc(det));});
+}
+function salvo(){
+ var n=val('nombre'),d=val('doc');
+ if(!n||!d){show('Escribe tu <b>nombre</b> y tu <b>documento</b> para avisar que estas a salvo.','warn');return;}
+ show('Obteniendo tu ubicacion...','warn');
+ var lugar=val('lugar');
+ gps(function(la,lo){post('accion=ok&nombre='+enc(n)+'&doc='+enc(d)+'&lat='+la+'&lon='+lo+'&lugar='+enc(lugar));});
 }
 </script></body></html>)HTML";
 
@@ -134,23 +226,26 @@ static const char* CSS =
   ".warn{background:#fffaeb;border:2px solid #b54708;color:#7a2e0e;padding:16px;border-radius:12px;font-size:17px}"
   ".note{font-size:12px;color:#666;margin-top:14px;text-align:center}";
 
-// Portal cautivo (HTTP, funciona dentro de la ventanita): reporte rapido + upgrade a GPS
+// Portal cautivo (HTTP): al conectarse, auto-redirige al dominio HTTPS con cert
+// valido para que el navegador permita navigator.geolocation y pida el GPS.
+// Triple redireccion (meta refresh + JS location.replace + boton) para cubrir
+// iOS y Android. Debajo, botones de respaldo que reportan SIN GPS si el HTTPS falla.
 String pageHttp() {
+  String https = "https://" + String(DOMAIN) + "/";
   String h = "<!doctype html><html lang='es'><head><meta charset='utf-8'>";
   h += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+  h += "<meta http-equiv='refresh' content='0;url=" + https + "'>";
   h += "<style>"; h += CSS; h += "</style></head><body><div class='wrap'>";
-  h += "<div class='hdr'><h1>PUNTO DE AYUDA</h1><p>Red oficial sin clave. Sin app.</p></div>";
+  h += "<div class='hdr'><h1>PUNTO DE AYUDA</h1><p>Abriendo la pagina segura para tu ubicacion...</p></div>";
+  h += "<a class='gps' href='" + https + "'>ABRIR Y ENVIAR MI UBICACION GPS</a>";
+  h += "<p class='note'>Si no abre solo, toca el boton de arriba.</p>";
   h += "<form action='/report' method='POST'>";
-  h += "<label>Donde estas? (opcional)</label>";
-  h += "<input name='detalle' maxlength='50' placeholder='ej: apto 401, 2do piso'>";
-  h += "<label>Que necesitas? Toca un boton.</label>";
-  h += "<button class='b1' name='tipo' value='agua'>Agua / comida</button>";
-  h += "<button class='b2' name='tipo' value='medico'>Ayuda medica</button>";
-  h += "<button class='b3' name='tipo' value='rescate'>Rescate (hay atrapados)</button>";
-  h += "<button class='b4' name='tipo' value='asalvo'>Estoy a salvo</button>";
+  h += "<label>O reporta ya, sin GPS. Que necesitas?</label>";
+  h += "<button class='b2' name='cat' value='MEDICO'>Ayuda medica</button>";
+  h += "<button class='b3' name='cat' value='RESCATE'>Rescate (hay atrapados)</button>";
+  h += "<button class='b1' name='cat' value='GRUA'>Grua</button>";
   h += "</form>";
-  h += "<a class='gps' href='https://"; h += DOMAIN; h += "/'>Enviar mi ubicacion EXACTA por GPS</a>";
-  h += "<p class='note'>El reporte con botones ya sirve. El GPS exacto abre tu navegador.</p>";
+  h += "<script>setTimeout(function(){location.replace('" + https + "');},50);</script>";
   h += "</div></body></html>";
   return h;
 }
@@ -189,29 +284,43 @@ static esp_err_t hGeo(httpd_req_t* req) {
   httpd_resp_send(req, PAGE_HTTPS, HTTPD_RESP_USE_STRLEN);
   return ESP_OK;
 }
-// HTTPS: recibe el fetch del JS, responde OK/PENDING
+// HTTPS: recibe el fetch del JS. Distingue SOS (pedir ayuda) de OK (a salvo).
 static esp_err_t hReportApi(httpd_req_t* req) {
   String body = readBody(req);
-  String tipo = field(body, "tipo"), lat = field(body, "lat"), lon = field(body, "lon"), det = field(body, "detalle");
+  String accion = field(body, "accion");
   bool ok = false;
-  if (tipo.length() > 0) ok = enviarReporte(tipo, det, lat, lon);
+  if (accion == "ok") {
+    String nombre = field(body, "nombre"), doc = field(body, "doc");
+    String lat = field(body, "lat"), lon = field(body, "lon"), lugar = field(body, "lugar");
+    if (nombre.length() > 0 && doc.length() > 0) ok = enviarOK(nombre, doc, lat, lon, lugar);
+  } else {
+    String cat = field(body, "cat"), pri = field(body, "pri");
+    String lat = field(body, "lat"), lon = field(body, "lon");
+    String lugar = field(body, "lugar"), det = field(body, "detalle");
+    if (cat.length() > 0) ok = enviarSOS(cat, pri, lat, lon, lugar, det);
+  }
   httpd_resp_set_type(req, "text/plain; charset=utf-8");
   httpd_resp_sendstr(req, ok ? "OK" : "PENDING");
   return ESP_OK;
 }
-// HTTP: recibe el POST del formulario, responde pagina de confirmacion
+// HTTP (respaldo sin GPS): recibe el POST del formulario y manda un SOS por categoria
 static esp_err_t hReportForm(httpd_req_t* req) {
   String body = readBody(req);
-  String tipo = field(body, "tipo"), det = field(body, "detalle");
+  String cat = field(body, "cat"), pri = field(body, "pri");
+  String lugar = field(body, "lugar"), det = field(body, "detalle");
   bool ok = false;
-  if (tipo.length() > 0) ok = enviarReporte(tipo, det, "", "");  // sin GPS: usa ubicacion del nodo
+  if (cat.length() > 0) ok = enviarSOS(cat, pri, "", "", lugar, det);  // sin GPS
   httpd_resp_set_type(req, "text/html; charset=utf-8");
-  String p = pageConfirm(tipo, ok);
+  String p = pageConfirm(cat, ok);
   httpd_resp_send(req, p.c_str(), HTTPD_RESP_USE_STRLEN);
   return ESP_OK;
 }
-// HTTP: portal cautivo (formulario funcional + upgrade a GPS)
+// HTTP catch-all: REDIRIGE CUALQUIER pagina/dominio al unico que sirve (HTTPS con GPS).
+// 302 con Location (fuerte) + cuerpo de respaldo con enlace y botones sin GPS.
 static esp_err_t hHttp(httpd_req_t* req) {
+  String url = "https://" + String(DOMAIN) + "/";
+  httpd_resp_set_status(req, "302 Found");
+  httpd_resp_set_hdr(req, "Location", url.c_str());
   httpd_resp_set_type(req, "text/html; charset=utf-8");
   String p = pageHttp();
   httpd_resp_send(req, p.c_str(), HTTPD_RESP_USE_STRLEN);
@@ -221,6 +330,7 @@ static esp_err_t hHttp(httpd_req_t* req) {
 void setup() {
   Serial.begin(115200);
   delay(300);
+  randomSeed(analogRead(0));
 
   SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
   Serial.print("[NODO] LoRa... ");
@@ -230,7 +340,8 @@ void setup() {
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
   WiFi.softAP(AP_SSID, NULL, 1, 0, 4);
-  Serial.print("[NODO] SoftAP AYUDA en "); Serial.println(WiFi.softAPIP());
+  Serial.print("[NODO] SoftAP '"); Serial.print(AP_SSID);
+  Serial.print("' en "); Serial.println(WiFi.softAPIP());
   dnsServer.start(53, "*", apIP);
 
   // HTTPS :443
@@ -242,6 +353,7 @@ void setup() {
   sconf.httpd.uri_match_fn = httpd_uri_match_wildcard;
   sconf.httpd.max_uri_handlers = 8;
   sconf.httpd.stack_size = 10240;
+  sconf.httpd.ctrl_port = 32768;        // puerto de control del server HTTPS
   httpd_handle_t shandle = NULL;
   Serial.print("[NODO] HTTPS... ");
   esp_err_t se = httpd_ssl_start(&shandle, &sconf);
@@ -258,7 +370,7 @@ void setup() {
   // HTTP :80 (portal cautivo -> boton a navegador)
   httpd_config_t hconf = HTTPD_DEFAULT_CONFIG();
   hconf.server_port = 80;
-  hconf.ctrl_port = 32769;
+  hconf.ctrl_port = 32780;              // distinto al del HTTPS para no chocar
   hconf.uri_match_fn = httpd_uri_match_wildcard;
   httpd_handle_t hhandle = NULL;
   if (httpd_start(&hhandle, &hconf) == ESP_OK) {

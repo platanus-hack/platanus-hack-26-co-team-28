@@ -6,6 +6,34 @@ Este repo tiene el firmware que ya funciona entre dos placas, los scripts para f
 
 ---
 
+## Protocolo de mensajes (leer primero)
+
+Todo mensaje LoRa usa un frame direccionado, estándar de la industria (patrón RadioHead):
+
+```
+ORIGEN | DESTINO | TIPO | MSGID | payload...
+```
+
+El receptor **filtra por DESTINO**, responde con **ACK dirigido**, descarta **duplicados**
+por `(ORIGEN,MSGID)`, y usa **CAD** (escucha antes de transmitir) para no chocar con otros nodos.
+
+7 tipos: `SOS` (pedir ayuda), `OK` (reportarse a salvo con datos identificables),
+`DISP` (despacho), `ACC` (aceptar), `ST` (estado), `POS` (posición), `ACK`.
+
+Ejemplos literales:
+```
+Pedir grúa por GPS:     a3f21c|CENTRO|SOS|7|GRUA|1|4.67670|-74.04830||volcado
+Pedir grúa por lugar:   a3f21c|CENTRO|SOS|8|GRUA|1|||Portal 80 con calle 13|carro sobre persona
+Médico (vida, pri 0):   b5k2c9|CENTRO|SOS|3|MEDICO|0|4.70100|-74.05010||inconsciente
+Estoy a salvo:          p9m2|CENTRO|OK|1|Juan Perez|CC1032456|4.65000|-74.05000|apto 402
+ACK del centro:         CENTRO|a3f21c|ACK|7
+```
+
+- Detalle completo del protocolo mínimo: [`docs/PROTOCOLO-MINIMO.md`](docs/PROTOCOLO-MINIMO.md).
+- Reuso de OSS y presupuesto de payload: [`docs/OSS-Y-PROTOCOLO.md`](docs/OSS-Y-PROTOCOLO.md).
+
+---
+
 ## Estado actual (qué ya funciona)
 
 - ✅ Enlace LoRa de una vía entre 2 placas. Verificado en hardware.
