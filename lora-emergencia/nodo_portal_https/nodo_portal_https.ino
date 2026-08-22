@@ -232,20 +232,22 @@ static const char* CSS =
 // iOS y Android. Debajo, botones de respaldo que reportan SIN GPS si el HTTPS falla.
 String pageHttp() {
   String https = "https://" + String(DOMAIN) + "/";
+  // Android: el WebView del portal cautivo bloquea el GPS. Este intent abre Chrome,
+  // donde navigator.geolocation SI funciona sobre HTTPS.
+  String intent = "intent://" + String(DOMAIN) + "/#Intent;scheme=https;package=com.android.chrome;end";
   String h = "<!doctype html><html lang='es'><head><meta charset='utf-8'>";
   h += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  h += "<meta http-equiv='refresh' content='0;url=" + https + "'>";
   h += "<style>"; h += CSS; h += "</style></head><body><div class='wrap'>";
-  h += "<div class='hdr'><h1>PUNTO DE AYUDA</h1><p>Abriendo la pagina segura para tu ubicacion...</p></div>";
-  h += "<a class='gps' href='" + https + "'>ABRIR Y ENVIAR MI UBICACION GPS</a>";
-  h += "<p class='note'>Si no abre solo, toca el boton de arriba.</p>";
+  h += "<div class='hdr'><h1>PUNTO DE AYUDA 911</h1><p>Para enviar tu ubicacion GPS, abre en tu navegador.</p></div>";
+  h += "<a class='gps' style='background:#0b8043' href='" + intent + "'>ANDROID: abrir en Chrome</a>";
+  h += "<a class='gps' href='" + https + "'>iPhone: enviar mi ubicacion GPS</a>";
+  h += "<p class='note'>Necesitas la Ubicacion del telefono ENCENDIDA. Al abrir, acepta el permiso.</p>";
   h += "<form action='/report' method='POST'>";
   h += "<label>O reporta ya, sin GPS. Que necesitas?</label>";
   h += "<button class='b2' name='cat' value='MEDICO'>Ayuda medica</button>";
   h += "<button class='b3' name='cat' value='RESCATE'>Rescate (hay atrapados)</button>";
   h += "<button class='b1' name='cat' value='GRUA'>Grua</button>";
   h += "</form>";
-  h += "<script>setTimeout(function(){location.replace('" + https + "');},50);</script>";
   h += "</div></body></html>";
   return h;
 }
@@ -315,12 +317,10 @@ static esp_err_t hReportForm(httpd_req_t* req) {
   httpd_resp_send(req, p.c_str(), HTTPD_RESP_USE_STRLEN);
   return ESP_OK;
 }
-// HTTP catch-all: REDIRIGE CUALQUIER pagina/dominio al unico que sirve (HTTPS con GPS).
-// 302 con Location (fuerte) + cuerpo de respaldo con enlace y botones sin GPS.
+// HTTP catch-all: cualquier pagina/dominio cae aqui (DNS cautivo). Devuelve una landing
+// (200) con los botones para ABRIR EN EL NAVEGADOR REAL. No auto-redirige, porque el
+// WebView del portal cautivo de Android bloquea el GPS: el usuario debe saltar a Chrome.
 static esp_err_t hHttp(httpd_req_t* req) {
-  String url = "https://" + String(DOMAIN) + "/";
-  httpd_resp_set_status(req, "302 Found");
-  httpd_resp_set_hdr(req, "Location", url.c_str());
   httpd_resp_set_type(req, "text/html; charset=utf-8");
   String p = pageHttp();
   httpd_resp_send(req, p.c_str(), HTTPD_RESP_USE_STRLEN);

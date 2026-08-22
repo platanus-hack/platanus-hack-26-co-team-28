@@ -87,6 +87,19 @@ void setup() {
 }
 
 void loop() {
+  // Comandos del CENTRO por USB: "TX|<frame>" -> transmite ese frame por LoRa.
+  // Asi el centro (Python) despacha DISP u otros mensajes sin tocar el firmware.
+  // Ejemplo: TX|CENTRO|GRUA07|DISP|12|7|4.6767|-74.0483|
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    if (cmd.startsWith("TX|")) {
+      String frame = cmd.substring(3);
+      enviarCAD(frame);
+      Serial.println("[GATEWAY] TX centro: " + frame);
+    }
+  }
+
   String datos;
   int st = radio.receive(datos);   // bloqueante; en timeout devuelve y repetimos
   if (st != RADIOLIB_ERR_NONE) return;
