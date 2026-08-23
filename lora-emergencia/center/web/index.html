@@ -9,21 +9,21 @@
 </head>
 <body>
   <a class="skip-link" href="#content">Saltar al contenido</a>
-  <div class="app-shell">
+  <div class="app-shell sidebar-collapsed" id="app-shell">
     <aside class="sidebar" aria-label="Navegación principal">
-      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Centro LoRa</span></div>
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-label">Centro LoRa</span><button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Expandir navegación" aria-expanded="false">›</button></div>
       <nav id="nav">
-        <a href="#overview" data-route="overview">Overview</a>
-        <a href="#requests" data-route="requests">Solicitudes</a>
-        <a href="#resources" data-route="resources">Recursos</a>
-        <a href="#network" data-route="network">Red LoRa</a>
-        <a href="#broadcasts" data-route="broadcasts">Broadcasts</a>
-        <a href="#safe-people" data-route="safe-people">Personas a salvo</a>
-        <a href="#simulator" data-route="simulator" id="simulator-nav" hidden>Simulador</a>
+        <a href="#overview" data-route="overview" title="Overview"><span class="nav-icon" aria-hidden="true">◉</span><span class="nav-label">Overview</span></a>
+        <a href="#requests" data-route="requests" title="Solicitudes"><span class="nav-icon" aria-hidden="true">!</span><span class="nav-label">Solicitudes</span></a>
+        <a href="#resources" data-route="resources" title="Recursos"><span class="nav-icon" aria-hidden="true">R</span><span class="nav-label">Recursos</span></a>
+        <a href="#network" data-route="network" title="Red LoRa"><span class="nav-icon" aria-hidden="true">≋</span><span class="nav-label">Red LoRa</span></a>
+        <a href="#broadcasts" data-route="broadcasts" title="Broadcasts"><span class="nav-icon" aria-hidden="true">↗</span><span class="nav-label">Broadcasts</span></a>
+        <a href="#safe-people" data-route="safe-people" title="Personas a salvo"><span class="nav-icon" aria-hidden="true">✓</span><span class="nav-label">Personas a salvo</span></a>
+        <a href="#simulator" data-route="simulator" id="simulator-nav" title="Simulador" hidden><span class="nav-icon" aria-hidden="true">◇</span><span class="nav-label">Simulador</span></a>
       </nav>
       <div class="sidebar-footer">
         <span id="connection-dot" class="status-dot"></span>
-        <span id="connection-text">Conectando…</span>
+        <span id="connection-text" class="connection-label">Conectando…</span>
       </div>
     </aside>
     <div class="workspace">

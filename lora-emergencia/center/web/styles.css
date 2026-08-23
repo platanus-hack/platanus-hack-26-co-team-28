@@ -31,8 +31,12 @@ button { cursor: pointer; }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 20px 12px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
 .brand { height: 44px; padding: 0 10px; display: flex; gap: 10px; align-items: center; font-weight: 650; letter-spacing: -.02em; }
 .brand-mark { width: 18px; height: 18px; border: 5px double #111; border-radius: 50%; }
+.brand-label { white-space: nowrap; }
+.sidebar-toggle { margin-left: auto; width: 36px; height: 36px; flex: 0 0 36px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: #333; font-size: 26px; line-height: 1; }
 nav { margin-top: 20px; display: grid; gap: 3px; }
-nav a { min-height: 52px; padding: 14px 12px; color: #444; text-decoration: none; border-radius: 7px; transition: color 140ms ease, background-color 140ms ease, transform 120ms var(--ease-out); }
+nav a { min-height: 52px; padding: 12px; color: #444; text-decoration: none; border-radius: 7px; display: flex; align-items: center; gap: 12px; transition: color 140ms ease, background-color 140ms ease, transform 120ms var(--ease-out); }
+.nav-icon { width: 24px; flex: 0 0 24px; text-align: center; font-weight: 700; font-size: 18px; }
+.nav-label { white-space: nowrap; }
 nav a[aria-current="page"] { color: #000; background: #f0f0f0; font-weight: 600; }
 nav a:active, button:active { transform: scale(.97); }
 .sidebar-footer { margin-top: auto; padding: 12px 10px; color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 8px; }
@@ -117,9 +121,22 @@ tbody tr.clickable:hover { background: #fafafa; }
 .review { border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: var(--surface-subtle); }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 
+@media (min-width: 901px) {
+  .app-shell { transition: grid-template-columns 180ms var(--ease-out); }
+  .app-shell.sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
+  .sidebar-collapsed .sidebar { padding-left: 8px; padding-right: 8px; }
+  .sidebar-collapsed .brand { padding: 0; justify-content: center; }
+  .sidebar-collapsed .brand-mark, .sidebar-collapsed .brand-label { display: none; }
+  .sidebar-collapsed .sidebar-toggle { margin-left: 0; }
+  .sidebar-collapsed nav a { justify-content: center; padding-left: 10px; padding-right: 10px; }
+  .sidebar-collapsed .nav-label, .sidebar-collapsed .connection-label { display: none; }
+  .sidebar-collapsed .sidebar-footer { justify-content: center; padding-left: 0; padding-right: 0; }
+}
+
 /* Raspberry kiosk: the 7-inch display exposes a ~1024px CSS viewport. */
 @media (min-width: 901px) and (max-width: 1180px) {
   .app-shell { grid-template-columns: 200px minmax(0, 1fr); }
+  .app-shell.sidebar-collapsed { grid-template-columns: 76px minmax(0, 1fr); }
   .sidebar { padding: 14px 8px; }
   .brand { padding: 0 8px; }
   nav { margin-top: 12px; }
@@ -145,6 +162,7 @@ tbody tr.clickable:hover { background: #fafafa; }
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { position: sticky; z-index: 30; width: 100%; min-width: 0; height: auto; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--border); overflow: hidden; }
   .brand, .sidebar-footer { display: none; }
+  .sidebar-toggle { display: none; }
   nav { width: 100%; max-width: calc(100vw - 24px); margin: 0; display: flex; overflow-x: auto; gap: 4px; }
   nav a { min-width: max-content; }
   .topbar { top: 61px; }

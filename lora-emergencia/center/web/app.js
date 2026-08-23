@@ -23,6 +23,19 @@ const state = {
 const content = document.querySelector("#content");
 const drawer = document.querySelector("#drawer");
 const scrim = document.querySelector("#scrim");
+const appShell = document.querySelector("#app-shell");
+const sidebarToggle = document.querySelector("#sidebar-toggle");
+
+function setSidebarCollapsed(collapsed, persist = true) {
+  appShell.classList.toggle("sidebar-collapsed", collapsed);
+  sidebarToggle.textContent = collapsed ? "›" : "‹";
+  sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+  sidebarToggle.setAttribute("aria-label", collapsed ? "Expandir navegación" : "Colapsar navegación");
+  if (persist) localStorage.setItem("sidebarExpanded", String(!collapsed));
+}
+
+setSidebarCollapsed(localStorage.getItem("sidebarExpanded") !== "true", false);
+sidebarToggle.addEventListener("click", () => setSidebarCollapsed(!appShell.classList.contains("sidebar-collapsed")));
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
