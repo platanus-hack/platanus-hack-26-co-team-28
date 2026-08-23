@@ -261,55 +261,155 @@ static const char* CSS =
   ".warn{background:#fffaeb;border:2px solid #b54708;color:#7a2e0e;padding:16px;border-radius:12px;font-size:17px}"
   ".note{font-size:12px;color:#666;margin-top:14px;text-align:center}";
 
-// Portal cautivo (HTTP): al conectarse, auto-redirige al dominio HTTPS con cert
-// valido para que el navegador permita navigator.geolocation y pida el GPS.
-// Triple redireccion (meta refresh + JS location.replace + boton) para cubrir
-// iOS y Android. Debajo, botones de respaldo que reportan SIN GPS si el HTTPS falla.
+// Portal cautivo (HTTP). Android y escritorio se van al dominio HTTPS, donde el
+// GPS si funciona. iOS se queda aqui, y aqui PIDE AYUDA, sin GPS.
+//
+// Por que iOS no puede dar GPS en esta pantalla:
+// WebKit bloquea navigator.geolocation en el motor cuando el origen no es
+// seguro. Geolocation::shouldBlockGeolocationRequests() exige https/wss,
+// loopback o file:; una IP privada como 192.168.4.1 no califica, y el CNA de
+// Apple carga esta pagina por HTTP plano. Devuelve PERMISSION_DENIED sin
+// mostrar ningun permiso. No hay rodeo.
+// (WebKit r200686, bug 157423, 11-may-2016; W3C Geolocation, "request a position")
+//
+// Por eso el orden es: ACCION PRIMERO, instrucciones despues.
+//  - El CNA se cierra al cambiar de app: decirle a alguien "abre Safari" le
+//    borra la sesion. Si no pudo pedir ayuda antes, se queda sin pedir.
+//  - NN/g (2018): el 42% del tiempo de vista cae en el 20% superior de la
+//    pagina. Gastar esa franja en instrucciones es gastar la atencion escasa.
+//  - El titulo va como texto, NO como barra roja. NN/g: "no hagas que
+//    elementos no clicables parezcan botones; darle color de fondo a un
+//    titulo lo hace parecer boton". El rojo queda como tinta y borde.
+//  - El envio es un POST de formulario de verdad, con navegacion completa:
+//    el CNA solo revisa la conectividad tras una navegacion real, nunca tras
+//    un AJAX (Wireless Broadband Alliance).
+// Limite duro del CNA: 128 KB en el HTML inicial y cero recursos externos.
+// Esta pagina es de ~4 KB, todo inline.
 String pageHttp() {
   String https = "https://" + String(DOMAIN) + "/";
   String intent = "intent://" + String(DOMAIN) + "/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + https + ";end";
-  // Landing (fase 2): el JS detecta el navegador por User-Agent y da la via correcta
-  // al GPS por SO. Android: auto-redirige a HTTPS + boton intent a Chrome. iOS: guia
-  // a Safari (el CNA bloquea el GPS). Desktop: auto-redirige a HTTPS.
   String h = "<!doctype html><html lang='es'><head><meta charset='utf-8'>";
   h += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  h += "<style>body{margin:0;background:#0C0C0D;color:#F1F3F4;font:16px system-ui,-apple-system,sans-serif}";
-  h += ".w{max-width:440px;margin:0 auto;min-height:100vh;padding:22px 16px;display:flex;flex-direction:column}";
-  h += ".hd{background:#FF4438;color:#fff;padding:16px;border-radius:14px;text-align:center;font-weight:800;font-size:20px}";
-  h += ".sp{flex:1}.msg{color:#9AA0A6;text-align:center;margin:18px 0;font-size:15px}";
-  h += ".step{background:#161719;border:1px solid #2E3033;border-radius:12px;padding:12px 14px;margin:8px 0;font-size:14px}";
-  h += ".step b{color:#4C9AFF}";
-  h += "a.go{display:block;background:#FF4438;color:#fff;padding:22px;border-radius:20px;text-decoration:none;text-align:center;font-weight:800;font-size:20px;box-shadow:0 14px 34px -12px rgba(255,68,56,.7)}";
-  h += "a.go small{display:block;font-weight:500;font-size:13px;opacity:.95;margin-top:4px}</style></head><body>";
-  h += "<div class='w'><div class='hd'>PUNTO DE AYUDA 911</div><div id='c'></div>";
-  h += "<div class='sp'></div><div id='b'></div><div class='sp'></div></div>";
-  h += "<script>";
+  h += "<title>Punto de ayuda 911</title><style>";
+  h += "*{box-sizing:border-box}body{margin:0;background:#0C0C0D;color:#F1F3F4;font:16px/1.5 system-ui,-apple-system,sans-serif}";
+  h += ".w{max-width:440px;margin:0 auto;min-height:100vh;padding:20px 16px 28px;display:flex;flex-direction:column}";
+  // Titulo: tinta roja y borde a la izquierda. Sin relleno y sin esquinas
+  // redondeadas, que son las 2 senales que lo hacian parecer boton.
+  h += "h1{margin:0;font-size:21px;font-weight:800;letter-spacing:-.01em;color:#FF6B60;";
+  h += "border-left:4px solid #FF4438;padding-left:12px;text-align:left;cursor:default;-webkit-tap-highlight-color:transparent}";
+  h += ".sub{color:#9AA0A6;font-size:14px;margin:8px 0 0;padding-left:16px}";
+  h += ".lead{font-size:17px;font-weight:700;margin:26px 0 12px}";
+  h += ".cats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0;padding:0;border:0}";
+  // Los 5 botones son la accion. Superficie neutra con borde, igual que el
+  // portal HTTPS, para que la persona reconozca la misma pantalla despues.
+  h += ".cat{-webkit-appearance:none;appearance:none;font:inherit;border:1.5px solid #2E3033;background:#161719;color:#F1F3F4;";
+  h += "border-radius:16px;padding:15px 10px;min-height:104px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;";
+  h += "text-align:center;font-weight:700;font-size:14.5px;cursor:pointer}";
+  h += ".cat:active{transform:scale(.98);border-color:#4C9AFF}";
+  h += ".cat:focus-visible{outline:3px solid #4C9AFF;outline-offset:3px}";
+  h += ".cat svg{width:30px;height:30px}";
+  h += ".cat .fa{width:32px;height:32px;border-radius:7px;background:#2FBF71;display:grid;place-items:center}.cat .fa svg{width:20px;height:20px;color:#fff}";
+  h += ".wide{grid-column:1/-1}";
+  // El GPS es una mejora opcional y va PLEGADO, debajo de la accion.
+  h += "details{margin-top:22px;background:#161719;border:1.5px solid #2E3033;border-radius:13px;padding:2px 14px}";
+  h += "summary{padding:13px 0;font-size:14.5px;font-weight:700;color:#4C9AFF;cursor:pointer;min-height:44px;display:flex;align-items:center}";
+  h += ".step{border-top:1px solid #2E3033;padding:11px 0;font-size:13.5px;color:#C9CCCE}.step b{color:#4C9AFF}";
+  h += ".sp{flex:1}";
+  h += "a.go{display:block;background:#FF4438;color:#fff;padding:20px;border-radius:18px;text-decoration:none;text-align:center;font-weight:800;font-size:19px;min-height:56px}";
+  h += "a.go small{display:block;font-weight:500;font-size:13px;opacity:.95;margin-top:4px}";
+  h += ".msg{color:#9AA0A6;text-align:center;margin:18px 0;font-size:15px}";
+  h += "@media (prefers-reduced-motion: reduce){.cat:active{transform:none}}";
+  h += "</style></head><body><div class='w'>";
+  h += "<h1>Punto de ayuda 911</h1>";
+  h += "<div class='sub'>Estás conectado. No necesitas internet.</div>";
+
+  // ---- iOS: pedir ayuda AQUI MISMO, sin GPS ----
+  h += "<div id='ios' hidden>";
+  h += "<div class='lead'>¿Qué está pasando?</div>";
+  h += "<form class='cats' method='POST' action='/report'>";
+  h += "<input type='hidden' name='accion' value='sos'>";
+  h += "<button class='cat' name='cat' value='RESCATE'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7'><circle cx='12' cy='7' r='3'/><path d='M5.5 21c0-4 2.9-6.5 6.5-6.5s6.5 2.5 6.5 6.5'/></svg><span>Persona atrapada</span></button>";
+  h += "<button class='cat' name='cat' value='MEDICO'><span class='fa'><svg viewBox='0 0 24 24' fill='currentColor'><path d='M9 3h6v6h6v6h-6v6H9v-6H3V9h6z'/></svg></span><span>Persona herida</span></button>";
+  h += "<button class='cat' name='cat' value='FUEGO'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7'><path d='M12 2c1 3-2 4-2 7a2 2 0 0 0 4 0c2 2 3 3.5 3 6a5 5 0 0 1-10 0c0-3 3-4 5-13z'/></svg><span>Incendio</span></button>";
+  h += "<button class='cat' name='cat' value='AGUA'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><path d='M12 2s6.5 7 6.5 11.5a6.5 6.5 0 0 1-13 0C5.5 9 12 2 12 2z'/></svg><span>Inundación</span></button>";
+  h += "<button class='cat wide' name='cat' value='GRUA'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7'><path d='M3 17h13v-4l4 1v3h1M5 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM16 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM3 13V8h7l3 3'/></svg><span>Vía o vehículo bloqueado</span></button>";
+  h += "</form>";
+  h += "<details><summary>Mandar también mi ubicación GPS (opcional)</summary>";
+  h += "<div class='step'>Esta pantalla de iPhone no puede leer el GPS. Pide ayuda arriba primero: llega igual.</div>";
+  h += "<div class='step'><b>1.</b> Toca <b>Cancelar</b> arriba a la derecha.</div>";
+  h += "<div class='step'><b>2.</b> Elige <b>Usar sin conexión</b>.</div>";
+  h += "<div class='step'><b>3.</b> Abre <b>Safari</b> y entra a <b>" + String(DOMAIN) + "</b></div>";
+  h += "</details></div>";
+
+  // ---- Android: al portal HTTPS, donde el GPS si funciona ----
+  h += "<div id='and' hidden><div class='msg'>Abriendo la página segura para tu ubicación…</div>";
+  h += "<div class='sp'></div><a class='go' id='andlink' href='#'>ABRIR EN CHROME<small>Envía tu ubicación GPS</small></a><div class='sp'></div></div>";
+  h += "</div><script>";
   h += "var HTTPS='" + https + "';var INTENT=\"" + intent + "\";";
   h += "var ua=navigator.userAgent,isiOS=/iPhone|iPad|iPod/i.test(ua),isAnd=/Android/i.test(ua);";
-  h += "var c=document.getElementById('c'),b=document.getElementById('b');";
-  h += "if(isiOS){";
-  h += " c.innerHTML=\"<div class='msg'>Para pedir ayuda con tu ubicacion GPS, abre <b>Safari</b>:</div>\"+";
-  h += "  \"<div class='step'><b>1.</b> Toca <b>Cancelar</b> arriba a la derecha.</div>\"+";
-  h += "  \"<div class='step'><b>2.</b> Elige <b>Usar sin conexion</b>.</div>\"+";
-  h += "  \"<div class='step'><b>3.</b> Abre <b>Safari</b> y entra a <b>ayuda.homiapp.xyz</b></div>\";";
-  h += " b.innerHTML=\"<a class='go' href='\"+HTTPS+\"'>Intentar abrir aqui<small>Si no pide ubicacion, usa los pasos de arriba</small></a>\";";
-  h += "}else if(isAnd){";
-  h += " c.innerHTML=\"<div class='msg'>Abriendo la pagina segura para tu ubicacion…</div>\";";
-  h += " b.innerHTML=\"<a class='go' href='\"+INTENT+\"'>ABRIR EN CHROME<small>Envia tu ubicacion GPS</small></a>\";";
-  h += " setTimeout(function(){location.replace(HTTPS);},400);";
-  h += "}else{location.replace(HTTPS);}";
+  h += "if(isiOS){document.getElementById('ios').hidden=false;}";
+  h += "else if(isAnd){var a=document.getElementById('and');a.hidden=false;";
+  h += "document.getElementById('andlink').href=INTENT;setTimeout(function(){location.replace(HTTPS);},400);}";
+  h += "else{location.replace(HTTPS);}";
   h += "</script></body></html>";
   return h;
 }
 
+// Pantalla de exito tras el POST del formulario (iOS, sin GPS). Aqui, y solo
+// aqui, van las instrucciones para mandar la ubicacion: la mejora se ofrece
+// DESPUES de que el pedido ya salio, nunca como requisito antes.
+// (NHS: "empieza por las preguntas esenciales, las opcionales despues";
+//  NENA-STA-020.1-2020 §2.2.8: se responde "con la mejor ubicacion disponible")
 String pageConfirm(String tipo, bool ok) {
+  String nombre = tipo;
+  if (tipo == "RESCATE") nombre = "persona atrapada";
+  else if (tipo == "MEDICO") nombre = "persona herida";
+  else if (tipo == "FUEGO") nombre = "incendio";
+  else if (tipo == "AGUA") nombre = "inundación";
+  else if (tipo == "GRUA") nombre = "vía o vehículo bloqueado";
+
   String h = "<!doctype html><html lang='es'><head><meta charset='utf-8'>";
   h += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  h += "<style>"; h += CSS; h += "</style></head><body><div class='wrap'>";
-  h += "<div class='hdr'><h1>REPORTE ENVIADO</h1></div>";
-  if (ok) h += "<div class='ok'><b>Confirmado por el puesto de mando.</b><br>Tu reporte de <b>" + tipo + "</b> llego por radio. Quedate cerca si es seguro.</div>";
-  else    h += "<div class='warn'><b>Guardado. Reintentando...</b><br>Tu reporte de <b>" + tipo + "</b> se registro. Aun no confirma el puesto de mando.</div>";
-  h += "<form action='/' method='GET'><button class='b1'>Hacer otro reporte</button></form>";
+  h += "<title>Pedido enviado</title><style>";
+  h += "*{box-sizing:border-box}body{margin:0;background:#0C0C0D;color:#F1F3F4;font:16px/1.5 system-ui,-apple-system,sans-serif}";
+  h += ".w{max-width:440px;margin:0 auto;min-height:100vh;padding:24px 16px 28px;display:flex;flex-direction:column}";
+  h += ".ill{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;margin:10px auto 16px;border:2.5px solid}";
+  h += ".ill svg{width:42px;height:42px}";
+  h += ".ok .ill{border-color:#2FBF71;background:rgba(47,191,113,.13)}.ok .ill svg{color:#2FBF71}";
+  h += ".wait .ill{border-color:#FFC400;background:rgba(255,196,0,.13)}.wait .ill svg{color:#FFC400}";
+  h += "h1{margin:0;font-size:23px;font-weight:800;text-align:center;letter-spacing:-.01em}";
+  h += ".sub{color:#9AA0A6;font-size:15px;text-align:center;margin:8px auto 18px;max-width:30ch}";
+  h += ".card{background:#161719;border:1.5px solid #2E3033;border-radius:14px;padding:14px 15px;font-size:14.5px}";
+  h += "details{margin-top:16px;background:#161719;border:1.5px solid #2E3033;border-radius:13px;padding:2px 14px}";
+  h += "summary{padding:13px 0;font-size:14.5px;font-weight:700;color:#4C9AFF;cursor:pointer;min-height:44px;display:flex;align-items:center}";
+  h += ".step{border-top:1px solid #2E3033;padding:11px 0;font-size:13.5px;color:#C9CCCE}.step b{color:#4C9AFF}";
+  h += ".sp{flex:1}";
+  h += "a.again{display:block;margin-top:18px;background:#161719;color:#F1F3F4;border:1.5px solid #2E3033;border-radius:14px;";
+  h += "padding:16px;min-height:56px;text-align:center;text-decoration:none;font-weight:700;font-size:16px}";
+  h += "a.again:active{transform:scale(.98)}";
+  h += "@media (prefers-reduced-motion: reduce){a.again:active{transform:none}}";
+  h += "</style></head><body><div class='w ";
+  h += (ok ? "ok" : "wait");
+  h += "'>";
+  if (ok) {
+    h += "<div class='ill'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.4'><path d='M20 6 9 17l-5-5'/></svg></div>";
+    h += "<h1>Pedimos ayuda por ti</h1>";
+    h += "<div class='sub'>El puesto de mando recibió tu pedido de <b>" + nombre + "</b> por radio.</div>";
+    h += "<div class='card'>Quédate cerca de este punto de ayuda si es seguro. Por aquí te ubican.</div>";
+  } else {
+    h += "<div class='ill'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.4'><path d='M12 7v6M12 17h.01'/><circle cx='12' cy='12' r='9'/></svg></div>";
+    h += "<h1>Guardado. Reintentando</h1>";
+    h += "<div class='sub'>Tu pedido de <b>" + nombre + "</b> quedó registrado. El puesto de mando todavía no confirma.</div>";
+    h += "<div class='card'>La radio sigue reintentando sola. No cierres esta pantalla todavía.</div>";
+  }
+  // La mejora de ubicacion, solo aqui y plegada.
+  h += "<details><summary>Mandar también mi ubicación GPS (opcional)</summary>";
+  h += "<div class='step'>Tu pedido ya salió. Esto solo agrega tu punto exacto en el mapa del mando.</div>";
+  h += "<div class='step'><b>1.</b> Toca <b>Cancelar</b> arriba a la derecha.</div>";
+  h += "<div class='step'><b>2.</b> Elige <b>Usar sin conexión</b>.</div>";
+  h += "<div class='step'><b>3.</b> Abre <b>Safari</b> y entra a <b>" + String(DOMAIN) + "</b></div>";
+  h += "</details><div class='sp'></div>";
+  h += "<a class='again' href='/'>Hacer otro pedido</a>";
   h += "</div></body></html>";
   return h;
 }
