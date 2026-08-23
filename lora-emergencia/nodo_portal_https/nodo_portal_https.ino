@@ -194,23 +194,27 @@ static const char* CSS =
 // iOS y Android. Debajo, botones de respaldo que reportan SIN GPS si el HTTPS falla.
 String pageHttp() {
   String https = "https://" + String(DOMAIN) + "/";
-  // Android: el WebView del portal cautivo bloquea el GPS. Este intent abre Chrome,
-  // donde navigator.geolocation SI funciona sobre HTTPS.
   String intent = "intent://" + String(DOMAIN) + "/#Intent;scheme=https;package=com.android.chrome;end";
+  // Landing de transicion: AUTO-REDIRIGE a la version segura (HTTPS con GPS y el UI
+  // rediseñado). meta refresh + JS. Boton grande de respaldo. Diseño dark coherente.
   String h = "<!doctype html><html lang='es'><head><meta charset='utf-8'>";
   h += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  h += "<style>"; h += CSS; h += "</style></head><body><div class='wrap'>";
-  h += "<div class='hdr'><h1>PUNTO DE AYUDA 911</h1><p>Para enviar tu ubicacion GPS, abre en tu navegador.</p></div>";
-  h += "<a class='gps' style='background:#0b8043' href='" + intent + "'>ANDROID: abrir en Chrome</a>";
-  h += "<a class='gps' href='" + https + "'>iPhone: enviar mi ubicacion GPS</a>";
-  h += "<p class='note'>Necesitas la Ubicacion del telefono ENCENDIDA. Al abrir, acepta el permiso.</p>";
-  h += "<form action='/report' method='POST'>";
-  h += "<label>O reporta ya, sin GPS. Que necesitas?</label>";
-  h += "<button class='b2' name='cat' value='MEDICO'>Ayuda medica</button>";
-  h += "<button class='b3' name='cat' value='RESCATE'>Rescate (hay atrapados)</button>";
-  h += "<button class='b1' name='cat' value='GRUA'>Grua</button>";
-  h += "</form>";
-  h += "</div></body></html>";
+  h += "<meta http-equiv='refresh' content='0;url=" + https + "'>";
+  h += "<style>body{margin:0;background:#0C0C0D;color:#F1F3F4;font:16px system-ui,-apple-system,sans-serif}";
+  h += ".w{max-width:440px;margin:0 auto;min-height:100vh;padding:22px 16px;display:flex;flex-direction:column}";
+  h += ".hd{background:#FF4438;color:#fff;padding:16px;border-radius:14px;text-align:center;font-weight:800;font-size:20px}";
+  h += ".sp{flex:1}.msg{color:#9AA0A6;text-align:center;margin:18px 0}";
+  h += "a.go{display:block;background:#FF4438;color:#fff;padding:22px;border-radius:20px;text-decoration:none;text-align:center;font-weight:800;font-size:22px;box-shadow:0 14px 34px -12px rgba(255,68,56,.7)}";
+  h += "a.go small{display:block;font-weight:500;font-size:13px;opacity:.95;margin-top:4px}";
+  h += "a.alt{display:block;color:#9AA0A6;text-align:center;margin-top:16px;text-decoration:none;font-size:14px}</style></head><body>";
+  h += "<div class='w'><div class='hd'>PUNTO DE AYUDA 911</div>";
+  h += "<div class='msg'>Abriendo la pagina para pedir ayuda con tu ubicacion…</div>";
+  h += "<div class='sp'></div>";
+  h += "<a class='go' href='" + https + "'>ABRIR Y PEDIR AYUDA<small>Envia tu ubicacion GPS</small></a>";
+  h += "<a class='alt' href='" + intent + "'>Android: ¿no abre? Toca aqui para abrir en Chrome</a>";
+  h += "<div class='sp'></div></div>";
+  h += "<script>location.replace('" + https + "');</script>";
+  h += "</body></html>";
   return h;
 }
 
