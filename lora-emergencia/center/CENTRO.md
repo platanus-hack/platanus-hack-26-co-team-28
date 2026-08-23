@@ -185,7 +185,8 @@ La idempotencia se aplica por `(node, seq)`. La base predeterminada es `center.d
 - Despacho y aceptación separados.
 - `ACC`, `ST`, `POS` y `HB` procesados por el centro.
 - SQLite.
-- Dashboard sin dependencias CDN.
+- Dashboard sin dependencias CDN; Leaflet 1.9.4 se sirve desde `web/vendor/`.
+- Mapa híbrido: usa automáticamente el recorte vectorial Shortbread de Bogotá cuando está instalado; sin paquete mantiene el esquema local. Los tiles raster de OpenStreetMap requieren autorización explícita por pestaña y, ante error o revocación, vuelve a la base vectorial local.
 - Broadcast global y zonal básico.
 - Pruebas unitarias del dominio y parser.
 
@@ -193,7 +194,6 @@ La idempotencia se aplica por `(node, seq)`. La base predeterminada es `center.d
 
 - Prueba end-to-end real con al menos gateway y nodo recurso.
 - OLED del modelo físico disponible.
-- Tiles cartográficos offline; hoy existe un plano esquemático de coordenadas.
 - Captura periódica de GPS del celular del recurso.
 - Confirmación humana de broadcasts.
 - Autenticación/cifrado de frames y minimización de datos personales.

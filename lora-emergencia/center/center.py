@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import re
 import socket
 import threading
 import time
@@ -15,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 from api import ApiError, CommandApi
 from command_core import CenterStore, RadioFrame
+from offline_map import MapManager, get_tile
 from triage import triage_requests
 
 
@@ -23,6 +25,7 @@ GATEWAY = None
 API = None
 DEMO = False
 API_TOKEN = ""
+MAP_MANAGER = MapManager()
 EVENT_SIGNAL = threading.Event()
 SSE_SLOTS = threading.BoundedSemaphore(8)
 HANDLER_SLOTS = threading.BoundedSemaphore(32)
@@ -34,7 +37,16 @@ STATIC_FILES = {
     "/grua.html": ("grua.html", "text/html; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/vendor/leaflet-1.9.4.css": ("vendor/leaflet.css", "text/css; charset=utf-8"),
+    "/vendor/leaflet-1.9.4.js": ("vendor/leaflet.js", "text/javascript; charset=utf-8"),
+    "/vendor/leaflet-vectorgrid-1.3.0.js": ("vendor/leaflet-vectorgrid.js", "text/javascript; charset=utf-8"),
+    "/vendor/LEAFLET-LICENSE.txt": ("vendor/LEAFLET-LICENSE.txt", "text/plain; charset=utf-8"),
+    "/vendor/LEAFLET-VECTORGRID-LICENSE.txt": ("vendor/LEAFLET-VECTORGRID-LICENSE.txt", "text/plain; charset=utf-8"),
 }
+IMMUTABLE_STATIC = {
+    "/vendor/leaflet-1.9.4.css", "/vendor/leaflet-1.9.4.js", "/vendor/leaflet-vectorgrid-1.3.0.js",
+}
+TILE_PATH = re.compile(r"/map/tiles/(\d{1,2})/(\d{1,8})/(\d{1,8})\.pbf")
 
 
 def notify_change():
@@ -223,13 +235,38 @@ class Handler(BaseHTTPRequestHandler):
     def send_error_json(self, error):
         self.send_json(error.status, {"ok": False, "error": str(error)})
 
+    def send_tile(self, path):
+        match = TILE_PATH.fullmatch(path)
+        if not match:
+            self.send_json(404, {"ok": False, "error": "not found"})
+            return
+        zoom, x, y = (int(value) for value in match.groups())
+        tile = get_tile(MAP_MANAGER.map_path, zoom, x, y)
+        if tile is None:
+            self.send_json(404, {"ok": False, "error": "tile not found"})
+            return
+        etag = '"{}"'.format(hashlib.sha256(tile).hexdigest())
+        self.send_response(304 if self.headers.get("If-None-Match") == etag else 200)
+        self.send_header("Content-Type", "application/vnd.mapbox-vector-tile")
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        if tile.startswith(b"\x1f\x8b"):
+            self.send_header("Content-Encoding", "gzip")
+        if self.headers.get("If-None-Match") != etag:
+            self.send_header("Content-Length", str(len(tile)))
+        self.send_security_headers()
+        self.end_headers()
+        if self.headers.get("If-None-Match") != etag:
+            self.wfile.write(tile)
+
     def send_security_headers(self):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; "
-            "img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+            "img-src 'self' data: https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'; "
+            "frame-ancestors 'none'",
         )
 
     def authorized(self):
@@ -252,11 +289,19 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"ok": False, "error": "not found"})
             return
         filename, content_type = item
-        body = (WEB_ROOT / filename).read_bytes()
+        source = WEB_ROOT / filename
+        use_gzip = path in IMMUTABLE_STATIC and self.accepts_gzip()
+        body = Path(str(source) + ".gz").read_bytes() if use_gzip else source.read_bytes()
         etag = '"{}"'.format(hashlib.sha256(body).hexdigest())
+        cache_control = "public, max-age=31536000, immutable" if path in IMMUTABLE_STATIC else "no-cache"
         if self.headers.get("If-None-Match") == etag:
             self.send_response(304)
             self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache_control)
+            if path in IMMUTABLE_STATIC:
+                self.send_header("Vary", "Accept-Encoding")
+            if use_gzip:
+                self.send_header("Content-Encoding", "gzip")
             self.send_security_headers()
             self.end_headers()
             return
@@ -264,14 +309,39 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("ETag", etag)
-        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Cache-Control", cache_control)
+        if path in IMMUTABLE_STATIC:
+            self.send_header("Vary", "Accept-Encoding")
+        if use_gzip:
+            self.send_header("Content-Encoding", "gzip")
         self.send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
+    def accepts_gzip(self):
+        for value in self.headers.get("Accept-Encoding", "").lower().split(","):
+            encoding, *parameters = value.strip().split(";")
+            if encoding != "gzip":
+                continue
+            quality = 1.0
+            for parameter in parameters:
+                if parameter.strip().startswith("q="):
+                    try:
+                        quality = float(parameter.strip()[2:])
+                    except ValueError:
+                        quality = 0.0
+            return quality > 0
+        return False
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/map/tiles/"):
+            self.send_tile(parsed.path)
+            return
         if not self.require_api_auth(parsed.path):
+            return
+        if parsed.path == "/api/v1/map":
+            self.send_json(200, MAP_MANAGER.status())
             return
         if parsed.path == "/api/v1/events":
             self.send_events()
@@ -321,6 +391,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(503, {"ok": False, "error": "servidor ocupado"})
             return
         try:
+            if parsed.path == "/api/v1/map/download":
+                try:
+                    self.read_json()
+                except ApiError as exc:
+                    self.send_error_json(exc)
+                    return
+                if not MAP_MANAGER.start():
+                    self.send_json(409, {"ok": False, "error": "la descarga ya está en curso"})
+                    return
+                self.send_json(202, {"ok": True, "map": MAP_MANAGER.status()})
+                return
             if parsed.path.startswith("/api/v1/"):
                 try:
                     body = self.read_json()

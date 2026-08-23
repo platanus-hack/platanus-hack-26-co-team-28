@@ -32,7 +32,7 @@ La Raspberry Pi contiene el command center. El TTGO central funciona como gatewa
 | Radio y backend | Python stdlib + pyserial opcional | Compatible con Python 3.9 y operación local sin servicios externos |
 | Persistencia | SQLite | Archivo local, sin servidor externo y apto para operación offline |
 | Interfaz | HTML, CSS y JavaScript vanilla | SPA local sin compilación, CDN ni conexión a internet |
-| Mapa | Esquema local de coordenadas | Ubicaciones observadas sin introducir aún zonas formales ni cartografía remota |
+| Mapa | Leaflet + VectorGrid local + Shortbread MBTiles | Calles offline de Bogotá; OSM raster online conserva autorización explícita por pestaña |
 | Despliegue | Raspberry Pi | Ejecuta aplicación, almacenamiento y servidor web local |
 
 El servidor expone la API versionada bajo `/api/v1` y mantiene temporalmente los endpoints legacy del prototipo.
@@ -58,10 +58,22 @@ El servidor expone la API versionada bajo `/api/v1` y mantiene temporalmente los
 - [`PROTOCOL.md`](PROTOCOL.md): borrador de mensajes y garantías de entrega.
 - [`TOOLCHAIN.md`](TOOLCHAIN.md): instalación, compilación, flasheo y técnicas no bloqueantes.
 - [`CENTRO.md`](CENTRO.md): guía operativa del flujo Raspberry ↔ gateway ↔ recursos.
+- [`MAP_DATA.md`](MAP_DATA.md): fuente, cobertura, licencia y atribución de la cartografía.
 
 ## Estado actual
 
-`center.py` funciona como gateway y bootstrap HTTP; `command_core.py` conserva dominio y SQLite, `api.py` expone contratos versionados y `web/` contiene el dashboard offline. El mapa actual es un esquema de coordenadas; la cartografía local sigue pendiente.
+`center.py` funciona como gateway y bootstrap HTTP; `command_core.py` conserva dominio y SQLite, `api.py` expone contratos versionados y `web/` contiene el dashboard offline. Leaflet 1.9.4 y Leaflet.VectorGrid 1.3.0 se empaquetan con sus licencias. Si existe el recorte Shortbread, el mapa lo usa automáticamente sin requests externos; si falta, mantiene el esquema local y ofrece una descarga explícita. La cartografía OSM raster online solo se activa con autorización por pestaña y divulga al proveedor el área visible. Al desactivarla vuelve al mapa vectorial local o, si no existe, al esquema.
+
+## Preparar el mapa offline
+
+La preparación descarga temporalmente cerca de 641 MB desde la URL fija de Geofabrik, valida el MBTiles, recorta Bogotá a z11–14 y elimina la fuente completa al finalizar. Requiere espacio libre adicional y nunca reemplaza un mapa válido hasta terminar correctamente:
+
+```bash
+cd lora-emergencia/center
+python3 offline_map.py download
+```
+
+También puede iniciarse con **Descargar mapa offline de Bogotá** en el dashboard. `GET /api/v1/map` y `POST /api/v1/map/download` exigen el token Bearer configurado cuando la API está autenticada. El estado incluye una generación sin paths locales y el frontend la añade como `?v=` a la URL; así un reemplazo válido no reutiliza tiles inmutables del paquete anterior. Los tiles permanecen públicos y se sirven únicamente por `/map/tiles/{z}/{x}/{y}.pbf`.
 
 La posición del puesto de mando no se presume: el TTGO central no incluye GPS. Para mostrar una ubicación fija configurada en el esquema:
 

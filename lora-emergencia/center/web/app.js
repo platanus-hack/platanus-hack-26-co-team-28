@@ -19,6 +19,10 @@ const state = {
   broadcastDraft: null,
   broadcastReviewed: false,
   broadcastConfirmed: false,
+  renderedRoute: null,
+  mapFilters: { request: true, resource: true },
+  onlineMapConsent: sessionStorage.getItem("onlineMapConsent") === "true",
+  offlineMap: null,
 };
 const content = document.querySelector("#content");
 const drawer = document.querySelector("#drawer");
@@ -97,11 +101,16 @@ async function renderRoute() {
     return;
   }
   setNavigation(current);
-  content.innerHTML = '<div class="empty">Cargando datos operacionales…</div>';
+  const routeChanged = state.renderedRoute !== current;
+  if (routeChanged) {
+    teardownMap();
+    content.innerHTML = '<div class="empty">Cargando datos operacionales…</div>';
+  }
   try {
     const renderers = { overview: renderOverview, requests: renderRequests, resources: renderResources, network: renderNetwork, broadcasts: renderBroadcasts, "safe-people": renderSafePeople, simulator: renderSimulator };
     await renderers[current]();
-    content.focus({ preventScroll: true });
+    state.renderedRoute = current;
+    if (routeChanged) content.focus({ preventScroll: true });
     return true;
   } catch (error) {
     content.innerHTML = `<div class="panel"><div class="empty">No se pudo cargar: ${escapeHtml(error.message)}</div></div>`;
@@ -110,7 +119,9 @@ async function renderRoute() {
 }
 
 async function getOverview() {
-  state.overview = await api("/api/v1/overview");
+  const [overview, offlineMap] = await Promise.all([api("/api/v1/overview"), api("/api/v1/map")]);
+  state.overview = overview;
+  state.offlineMap = offlineMap;
   state.demo = state.overview.demo;
   state.lastUpdate = Date.now();
   updateSyncStatus();
@@ -125,26 +136,52 @@ async function getOverview() {
 async function renderOverview() {
   const data = await getOverview();
   const metrics = data.metrics;
-  content.innerHTML = `
-    <div class="page-head"><div><h2>Situación operacional</h2><p>Decisiones pendientes y estado observado de la red.</p></div><span class="badge ${data.gateway ? "success" : "warning"}">${data.gateway ? "Gateway conectado" : "Sin radio"}</span></div>
-    <section class="metrics" aria-label="Métricas accionables">
+  if (!document.querySelector("#overview-view")) content.innerHTML = `
+    <div id="overview-view">
+    <div class="page-head"><div><h2>Situación operacional</h2><p>Decisiones pendientes y estado observado de la red.</p></div><span id="overview-gateway" class="badge ${data.gateway ? "success" : "warning"}">${data.gateway ? "Gateway conectado" : "Sin radio"}</span></div>
+    <section id="overview-metrics" class="metrics" aria-label="Métricas accionables">
       ${metric(metrics.critical, "Solicitudes críticas")}${metric(metrics.pending, "Decisiones pendientes")}${metric(metrics.available_resources, "Recursos disponibles")}${metric(metrics.open_requests, "Solicitudes abiertas")}
     </section>
     <div class="grid">
-      <section class="panel"><div class="panel-head"><div><h3>Esquema de ubicaciones</h3><span class="muted">${centerPositionLabel(data.center_position)}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}</span></div><div class="panel-actions"><button id="locate-center" class="button" type="button">Usar ubicación actual</button><button id="manual-center" class="button" type="button">Ingresar coordenadas</button></div></div><div id="map" class="map"><span class="map-note">Esquema offline · sin cartografía formal</span></div></section>
-      <section class="panel"><div class="panel-head"><h3>Cola priorizada</h3><a class="button" href="#requests">Ver todas</a></div><div class="list">${data.requests.length ? data.requests.slice(0, 7).map(requestListItem).join("") : empty("Sin solicitudes abiertas")}</div></section>
+      <section class="panel map-panel"><div class="panel-head"><div><h3>Mapa operacional</h3><span id="map-positions-note" class="muted">${mapPositionsNote(data)}</span></div><div class="panel-actions"><button id="locate-center" class="button" type="button">Usar ubicación actual</button><button id="manual-center" class="button" type="button">Ingresar coordenadas</button></div></div>
+        <div class="map-toolbar" aria-label="Controles del mapa">
+          <button id="map-toggle-requests" class="button map-toggle" type="button" aria-pressed="true">Solicitudes</button>
+          <button id="map-toggle-resources" class="button map-toggle" type="button" aria-pressed="true">Recursos</button>
+          <button id="map-fit" class="button" type="button">Encuadrar puntos</button>
+           <span id="map-status" class="map-status" role="status">Esquema offline</span>
+           <button id="map-download" class="button map-download" type="button" hidden>Descargar mapa offline de Bogotá</button>
+           <button id="map-online" class="button map-online" type="button">Activar cartografía online</button>
+           <button id="map-offline" class="button" type="button" hidden>Volver al mapa offline</button>
+         </div>
+         <p id="map-download-status" class="map-download-status" role="status" hidden></p>
+        <p id="map-privacy" class="map-privacy">Al activarla se solicitan tiles externos y se comparte el área visible con OpenStreetMap.</p>
+        <div id="map" class="map" aria-label="Mapa de solicitudes y recursos"><div class="schematic-context" aria-hidden="true"><span>N</span><i></i></div><span class="map-note">Mapa esquemático offline</span></div>
+        <div class="map-legend" aria-label="Leyenda del mapa"><span><i class="legend-shape center"></i>Centro</span><span><i class="legend-shape request"></i>Solicitud</span><span><i class="legend-shape resource"></i>Recurso</span><span><i class="legend-state fresh"></i>Posición y contacto &lt;10 min</span><span><i class="legend-state aging"></i>Posición 10–30 min</span><span><i class="legend-state stale"></i>Dato &gt;30 min</span></div>
+      </section>
+      <section class="panel"><div class="panel-head"><h3>Cola priorizada</h3><a class="button" href="#requests">Ver todas</a></div><div id="overview-queue" class="list">${overviewQueue(data.requests)}</div></section>
     </div>
-    <section class="panel" style="margin-top:16px"><div class="panel-head"><h3>Actividad reciente de radio</h3><a class="button" href="#network">Abrir red</a></div>${radioTable(data.recent_activity)}</section>`;
+    <section class="panel" style="margin-top:16px"><div class="panel-head"><h3>Actividad reciente de radio</h3><a class="button" href="#network">Abrir red</a></div><div id="overview-radio">${radioTable(data.recent_activity)}</div></section>
+    </div>`;
+  document.querySelector("#overview-metrics").innerHTML = `${metric(metrics.critical, "Solicitudes críticas")}${metric(metrics.pending, "Decisiones pendientes")}${metric(metrics.available_resources, "Recursos disponibles")}${metric(metrics.open_requests, "Solicitudes abiertas")}`;
+  const gatewayBadge = document.querySelector("#overview-gateway");
+  gatewayBadge.className = `badge ${data.gateway ? "success" : "warning"}`;
+  gatewayBadge.textContent = data.gateway ? "Gateway conectado" : "Sin radio";
+  document.querySelector("#map-positions-note").textContent = mapPositionsNote(data);
+  document.querySelector("#overview-queue").innerHTML = overviewQueue(data.requests);
+  document.querySelector("#overview-radio").innerHTML = radioTable(data.recent_activity);
+  document.querySelector("#locate-center").onclick = locateCenter;
+  document.querySelector("#manual-center").onclick = enterCenterPosition;
   plotMap(data.requests, data.resources, data.center_position);
-  document.querySelector("#locate-center").addEventListener("click", locateCenter);
-  document.querySelector("#manual-center").addEventListener("click", enterCenterPosition);
   bindRequestRows();
 }
+
+function mapPositionsNote(data) { return `${centerPositionLabel(data.center_position)}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}`; }
+function overviewQueue(requests) { return requests.length ? requests.slice(0, 7).map(requestListItem).join("") : empty("Sin solicitudes abiertas"); }
 
 function centerPositionLabel(position) {
   if (!position) return "Centro sin ubicación · posiciones observadas";
   const accuracy = position.accuracy == null ? "" : ` · ±${Math.round(position.accuracy)} m`;
-  return `Centro: ${escapeHtml(position.source.toLowerCase())}${accuracy} · ${ago(position.captured_at)}`;
+  return `Centro: ${position.source.toLowerCase()}${accuracy} · ${ago(position.captured_at)}`;
 }
 
 async function saveCenterPosition(lat, lon, accuracy, source) {
@@ -198,31 +235,407 @@ function requestListItem(item) {
   </button>`;
 }
 
+const hybridMap = {
+  map: null,
+  element: null,
+  markers: new Map(),
+  items: [],
+  tileLayer: null,
+  localLayer: null,
+  tileTimer: null,
+  tileGeneration: 0,
+  camera: null,
+  needsInitialFit: true,
+  initialFitDone: false,
+  mode: "offline",
+};
+
 function plotMap(requests, resources, centerPosition) {
-  const items = [
-    ...(centerPosition && validCoordinate(centerPosition.lat, centerPosition.lon) ? [{ ...centerPosition, mapType: "center", label: `${centerPosition.label} · ubicación ${centerPosition.source.toLowerCase()}` }] : []),
-    ...requests.filter((item) => validCoordinate(item.lat, item.lon)).map((item) => ({ ...item, mapType: "request", label: `Solicitud #${item.id}` })),
-    ...resources.filter((item) => validCoordinate(item.lat, item.lon)).map((item) => ({ ...item, mapType: "resource", label: item.node })),
+  hybridMap.items = [
+    ...(centerPosition && validCoordinate(centerPosition.lat, centerPosition.lon) ? [{ ...centerPosition, mapType: "center", key: "center" }] : []),
+    ...requests.filter((item) => validCoordinate(item.lat, item.lon)).map((item) => ({ ...item, mapType: "request", key: `request:${item.id}` })),
+    ...resources.filter((item) => validCoordinate(item.lat, item.lon)).map((item) => ({ ...item, mapType: "resource", key: `resource:${item.node}` })),
   ];
-  if (!items.length) return;
-  const latitudes = items.map((item) => Number(item.lat));
-  const longitudes = items.map((item) => Number(item.lon));
-  const minLat = Math.min(...latitudes) - .001;
-  const maxLat = Math.max(...latitudes) + .001;
-  const minLon = Math.min(...longitudes) - .001;
-  const maxLon = Math.max(...longitudes) + .001;
-  const map = document.querySelector("#map");
-  items.forEach((item) => {
-    const dot = document.createElement("span");
-    dot.className = `map-dot ${item.mapType}`;
-    dot.style.left = `${5 + 88 * ((Number(item.lon) - minLon) / (maxLon - minLon))}%`;
-    dot.style.top = `${5 + 84 * (1 - (Number(item.lat) - minLat) / (maxLat - minLat))}%`;
-    dot.title = item.label;
-    dot.setAttribute("aria-label", item.label);
-    map.appendChild(dot);
+  const mapElement = document.querySelector("#map");
+  if (!mapElement) return;
+  if (hybridMap.element !== mapElement) mountHybridMap(mapElement);
+  updateMapMarkers();
+}
+
+function mountHybridMap(mapElement) {
+  teardownMap(true);
+  hybridMap.element = mapElement;
+  hybridMap.needsInitialFit = !hybridMap.initialFitDone;
+  bindMapControls();
+  if (!window.L) {
+    setMapMode("offline", false);
+    renderSchematicMarkers();
+    return;
+  }
+  hybridMap.map = window.L.map(mapElement, { zoomControl: true, attributionControl: true });
+  const camera = hybridMap.camera || { center: [4.674, -74.05], zoom: 13 };
+  hybridMap.map.setView(camera.center, camera.zoom);
+  hybridMap.map.on("moveend zoomend", rememberMapCamera);
+  useOfflineBase();
+  if (state.onlineMapConsent) tryOnlineTiles();
+}
+
+function bindMapControls() {
+  const toggles = [["request", "#map-toggle-requests"], ["resource", "#map-toggle-resources"]];
+  toggles.forEach(([type, selector]) => {
+    const button = document.querySelector(selector);
+    button.setAttribute("aria-pressed", String(state.mapFilters[type]));
+    button.addEventListener("click", () => {
+      state.mapFilters[type] = !state.mapFilters[type];
+      button.setAttribute("aria-pressed", String(state.mapFilters[type]));
+      updateMapVisibility();
+    });
+  });
+  document.querySelector("#map-fit").addEventListener("click", fitMapPoints);
+  document.querySelector("#map-online").addEventListener("click", enableOnlineMap);
+  document.querySelector("#map-offline").addEventListener("click", disableOnlineMap);
+  document.querySelector("#map-download").addEventListener("click", downloadOfflineMap);
+  updateOfflineMapControl();
+}
+
+function shortbreadStyle(properties, zoom, layerName) {
+  if (["ocean", "water_polygons"].includes(layerName)) return { fill: true, fillColor: "#dbeafe", fillOpacity: 1, stroke: false };
+  if (layerName === "land") return { fill: true, fillColor: properties.kind === "forest" ? "#e7eee8" : "#f1f1ef", fillOpacity: .8, stroke: false };
+  if (["sites", "street_polygons", "pier_polygons", "dam_polygons"].includes(layerName)) return { fill: true, fillColor: "#ececea", fillOpacity: .8, color: "#dededb", weight: .5 };
+  if (layerName === "buildings") return { fill: true, fillColor: "#dededb", fillOpacity: .85, color: "#d0d0cc", weight: .5 };
+  if (layerName === "boundaries") return { color: "#a3a3a3", weight: 1, dashArray: "4 4", opacity: .7 };
+  if (["water_lines", "dam_lines", "pier_lines"].includes(layerName)) return { color: "#9bc3e6", weight: zoom >= 14 ? 1.4 : 1, opacity: .9 };
+  if (["streets", "bridges", "ferries", "aerialways"].includes(layerName)) {
+    const major = ["motorway", "trunk", "primary", "secondary"].includes(properties.kind);
+    const rail = properties.rail || ["rail", "subway", "tram", "light_rail"].includes(properties.kind);
+    return { color: rail ? "#a3a3a3" : major ? "#8f8f8b" : "#b8b8b4", weight: major ? (zoom >= 14 ? 2.6 : 1.8) : (zoom >= 14 ? 1.3 : .8), opacity: rail ? .55 : .92, dashArray: rail ? "3 3" : null };
+  }
+  return { opacity: 0, fillOpacity: 0, weight: 0, radius: 0 };
+}
+
+function useOfflineBase() {
+  if (!hybridMap.map) return;
+  if (state.offlineMap?.available && window.L.vectorGrid?.protobuf) {
+    hybridMap.localLayer = window.L.vectorGrid.protobuf(state.offlineMap.tiles, {
+      rendererFactory: window.L.canvas.tile,
+      vectorTileLayerStyles: new Proxy({}, { get: (_target, layerName) => (properties, zoom) => shortbreadStyle(properties, zoom, layerName) }),
+      minZoom: state.offlineMap.minzoom,
+      maxNativeZoom: state.offlineMap.maxNativeZoom,
+      maxZoom: state.offlineMap.maxzoom,
+      bounds: [[state.offlineMap.bounds[1], state.offlineMap.bounds[0]], [state.offlineMap.bounds[3], state.offlineMap.bounds[2]]],
+      attribution: state.offlineMap.attribution,
+      interactive: false,
+    }).addTo(hybridMap.map);
+    if (state.onlineMapConsent && hybridMap.tileLayer) {
+      hybridMap.map.removeLayer(hybridMap.localLayer);
+      setMapMode(hybridMap.mode);
+    } else {
+      setMapMode("local");
+    }
+  } else {
+    setMapMode("offline");
+  }
+}
+
+function enableOnlineMap() {
+  state.onlineMapConsent = true;
+  sessionStorage.setItem("onlineMapConsent", "true");
+  tryOnlineTiles();
+}
+
+function disableOnlineMap() {
+  state.onlineMapConsent = false;
+  sessionStorage.removeItem("onlineMapConsent");
+  restoreOfflineBase();
+}
+
+function tryOnlineTiles() {
+  if (!state.onlineMapConsent || !hybridMap.map || hybridMap.tileLayer) return;
+  const generation = ++hybridMap.tileGeneration;
+  let consecutiveErrors = 0;
+  const layer = window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap contributors",
+    maxZoom: 19,
+  });
+  hybridMap.tileLayer = layer;
+  if (hybridMap.localLayer) hybridMap.map.removeLayer(hybridMap.localLayer);
+  setMapMode("loading");
+  layer.on("tileload", () => {
+    if (generation !== hybridMap.tileGeneration) return;
+    consecutiveErrors = 0;
+    clearTimeout(hybridMap.tileTimer);
+    setMapMode("online");
+  });
+  layer.on("tileerror", () => {
+    if (generation === hybridMap.tileGeneration && ++consecutiveErrors >= 4) restoreOfflineBase();
+  });
+  layer.addTo(hybridMap.map);
+  clearTimeout(hybridMap.tileTimer);
+  hybridMap.tileTimer = setTimeout(() => {
+    if (generation === hybridMap.tileGeneration && hybridMap.mode !== "online") restoreOfflineBase();
+  }, 7000);
+}
+
+function restoreOfflineBase() {
+  clearTimeout(hybridMap.tileTimer);
+  hybridMap.tileGeneration += 1;
+  if (hybridMap.map && hybridMap.tileLayer) hybridMap.map.removeLayer(hybridMap.tileLayer);
+  hybridMap.tileLayer = null;
+  if (hybridMap.map && hybridMap.localLayer && !hybridMap.map.hasLayer(hybridMap.localLayer)) hybridMap.localLayer.addTo(hybridMap.map);
+  setMapMode(hybridMap.localLayer ? "local" : "offline");
+}
+
+function degradeToSchematic() { restoreOfflineBase(); }
+
+function setMapMode(mode) {
+  hybridMap.mode = mode;
+  hybridMap.element?.classList.toggle("cartography-active", mode === "online" || mode === "local");
+  const status = document.querySelector("#map-status");
+  const online = document.querySelector("#map-online");
+  const offline = document.querySelector("#map-offline");
+  if (status) status.textContent = mode === "online" ? "Cartografía online" : mode === "local" ? "Mapa offline de Bogotá" : mode === "loading" ? "Cargando cartografía…" : "Esquema offline";
+  if (online) online.hidden = state.onlineMapConsent && mode !== "offline";
+  if (offline) offline.hidden = !state.onlineMapConsent;
+  updateOfflineMapControl();
+}
+
+function updateOfflineMapControl() {
+  const button = document.querySelector("#map-download");
+  const message = document.querySelector("#map-download-status");
+  if (!button || !message || !state.offlineMap) return;
+  const map = state.offlineMap;
+  button.hidden = map.available || map.downloading;
+  button.disabled = map.downloading;
+  button.textContent = map.error ? "Reintentar descarga del mapa offline" : "Descargar mapa offline de Bogotá";
+  if (map.downloading) {
+    const progress = map.progress.percent == null ? map.progress.stage === "cropping" ? `${map.progress.downloaded} tiles` : "Preparando…" : `${map.progress.percent}%`;
+    message.textContent = `Mapa offline de Bogotá: ${progress}`;
+    message.hidden = false;
+  } else if (map.error && !map.available) {
+    message.textContent = `No se pudo preparar el mapa: ${map.error}`;
+    message.hidden = false;
+  } else {
+    message.hidden = true;
+  }
+}
+
+async function downloadOfflineMap() {
+  const button = document.querySelector("#map-download");
+  button.disabled = true;
+  try {
+    await api("/api/v1/map/download", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    await pollOfflineMap();
+  } catch (error) {
+    notify(error.message, true);
+    button.disabled = false;
+  }
+}
+
+async function pollOfflineMap() {
+  const previousTiles = state.offlineMap?.tiles;
+  state.offlineMap = await api("/api/v1/map");
+  updateOfflineMapControl();
+  if (state.offlineMap.downloading) {
+    setTimeout(() => pollOfflineMap().catch((error) => notify(error.message, true)), 1000);
+  } else if (state.offlineMap.available) {
+    notify("Mapa offline de Bogotá listo");
+    if (hybridMap.map && previousTiles !== state.offlineMap.tiles) {
+      if (hybridMap.localLayer) hybridMap.map.removeLayer(hybridMap.localLayer);
+      hybridMap.localLayer = null;
+      useOfflineBase();
+    }
+  }
+}
+
+function updateMapMarkers() {
+  if (!hybridMap.map) {
+    renderSchematicMarkers();
+    return;
+  }
+  const activeKeys = new Set(hybridMap.items.map((item) => item.key));
+  hybridMap.markers.forEach((record, key) => {
+    if (!activeKeys.has(key)) {
+      record.marker.remove();
+      hybridMap.markers.delete(key);
+    }
+  });
+  hybridMap.items.forEach((item) => {
+    const visualSignature = mapItemVisualSignature(item);
+    const contentSignature = mapItemContentSignature(item);
+    let record = hybridMap.markers.get(item.key);
+    if (!record) {
+      const marker = createLeafletMarker(item);
+      record = { marker, item, visualSignature, contentSignature, positionSignature: mapItemPositionSignature(item) };
+      hybridMap.markers.set(item.key, record);
+    } else {
+      const wasFresh = markerFreshness(record.item) === "fresh";
+      const positionSignature = mapItemPositionSignature(item);
+      const animateFresh = markerFreshness(item) === "fresh" && (!wasFresh || record.positionSignature !== positionSignature);
+      record.item = item;
+      record.marker._operationalItem = item;
+      if (record.visualSignature !== visualSignature || animateFresh) {
+        record.marker.setLatLng([Number(item.lat), Number(item.lon)]);
+        record.marker.setIcon(markerIcon(item, false, animateFresh));
+        configureMarkerElement(record.marker);
+        record.visualSignature = visualSignature;
+      }
+      if (record.contentSignature !== contentSignature) {
+        configureMarkerElement(record.marker);
+        if (item.mapType !== "request") record.marker.setPopupContent(mapPopup(item));
+        record.contentSignature = contentSignature;
+      }
+      record.positionSignature = positionSignature;
+    }
+  });
+  updateMapVisibility();
+  if (hybridMap.needsInitialFit) {
+    if (fitMapPoints()) {
+      hybridMap.needsInitialFit = false;
+      hybridMap.initialFitDone = true;
+    }
+  }
+}
+
+function createLeafletMarker(item) {
+  const label = markerLabel(item);
+  const marker = window.L.marker([Number(item.lat), Number(item.lon)], {
+    icon: markerIcon(item, true, true), keyboard: true, title: label, alt: label, riseOnHover: true,
+  });
+  marker._operationalItem = item;
+  marker.on("add", () => configureMarkerElement(marker));
+  if (item.mapType === "request") marker.on("click", () => openRequest(Number(item.id)));
+  else marker.bindPopup(mapPopup(item), { className: "resource-popup", closeButton: true });
+  return marker;
+}
+
+function configureMarkerElement(marker) {
+  const element = marker.getElement();
+  if (!element) return;
+  element.setAttribute("aria-label", markerLabel(marker._operationalItem));
+  element.setAttribute("role", "button");
+  if (element.dataset.operationalMarker === "true") return;
+  element.dataset.operationalMarker = "true";
+  element.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); marker.fire("click"); }
   });
 }
-function validCoordinate(lat, lon) { return lat !== "" && lon !== "" && Number.isFinite(Number(lat)) && Number.isFinite(Number(lon)); }
+
+function markerIcon(item, animateCritical, animateFresh = false) {
+  const classes = ["operational-marker", item.mapType, markerFreshness(item)];
+  if (animateCritical && item.mapType === "request" && (item.triage?.priority ?? item.priority) === 0 && ageSeconds(item.created_at) < 600) classes.push("critical-new");
+  if (animateFresh && item.mapType === "resource" && markerFreshness(item) === "fresh") classes.push("fresh-animate");
+  return window.L.divIcon({ className: classes.join(" "), html: "<span></span>", iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -22] });
+}
+
+function mapItemVisualSignature(item) { return [item.lat, item.lon, item.state, item.priority, item.triage?.priority, markerFreshness(item)].join("|"); }
+function mapItemPositionSignature(item) { return [item.lat, item.lon, item.position_seen_at].join("|"); }
+function mapItemContentSignature(item) { return item.mapType === "request" ? markerLabel(item) : `${markerLabel(item)}|${mapPopup(item)}`; }
+
+function markerFreshness(item) {
+  if (item.mapType !== "resource") return "";
+  const positionAge = ageSeconds(item.position_seen_at);
+  const contactAge = ageSeconds(item.last_seen);
+  if (positionAge > 1800 || contactAge > 1800) return "stale";
+  if (positionAge >= 600) return "aging";
+  if (positionAge < 600 && contactAge < 600) return "fresh";
+  return "recent-static";
+}
+
+function markerLabel(item) {
+  if (item.mapType === "request") return `Solicitud #${item.id}, ${item.category || "sin categoría"}, prioridad ${item.triage?.priority ?? item.priority}`;
+  if (item.mapType === "center") return `${item.label || "Centro de comando"}, ubicación ${item.source.toLowerCase()}`;
+  return `Recurso ${item.node}, ${item.state || "sin estado"}, posición ${ago(item.position_seen_at)}`;
+}
+
+function mapPopup(item) {
+  if (item.mapType === "center") return `<div class="map-popup" tabindex="-1"><strong>${escapeHtml(item.label || "Centro de comando")}</strong><dl><dt>Fuente</dt><dd>${escapeHtml(item.source.toLowerCase())}</dd><dt>Capturada</dt><dd>${ago(item.captured_at)}</dd></dl></div>`;
+  return `<div class="map-popup" tabindex="-1"><strong class="mono">${escapeHtml(item.node)}</strong><dl><dt>Estado</dt><dd>${escapeHtml(item.state || "Sin dato")}</dd><dt>Contacto</dt><dd>${ago(item.last_seen)}</dd><dt>Posición</dt><dd>${ago(item.position_seen_at)}</dd></dl></div>`;
+}
+
+function updateMapVisibility() {
+  if (!hybridMap.map) {
+    renderSchematicMarkers();
+    return;
+  }
+  hybridMap.markers.forEach((record) => {
+    const visible = record.item.mapType === "center" || state.mapFilters[record.item.mapType];
+    if (visible && !hybridMap.map.hasLayer(record.marker)) record.marker.addTo(hybridMap.map);
+    if (!visible && hybridMap.map.hasLayer(record.marker)) record.marker.remove();
+  });
+}
+
+function renderSchematicMarkers() {
+  if (!hybridMap.element) return;
+  hybridMap.element.querySelectorAll(".map-dot").forEach((marker) => marker.remove());
+  const items = hybridMap.items.filter((item) => item.mapType === "center" || state.mapFilters[item.mapType]);
+  if (!items.length) return;
+  const lats = items.map((item) => Number(item.lat));
+  const lons = items.map((item) => Number(item.lon));
+  const minLat = Math.min(...lats) - .001;
+  const maxLat = Math.max(...lats) + .001;
+  const minLon = Math.min(...lons) - .001;
+  const maxLon = Math.max(...lons) + .001;
+  items.forEach((item) => {
+    const marker = document.createElement("button");
+    marker.type = "button";
+    marker.className = `map-dot ${item.mapType} ${markerFreshness(item)}`;
+    if (item.mapType === "request" && (item.triage?.priority ?? item.priority) === 0 && ageSeconds(item.created_at) < 600) marker.classList.add("critical-new");
+    marker.style.left = `${6 + 88 * ((Number(item.lon) - minLon) / (maxLon - minLon))}%`;
+    marker.style.top = `${6 + 84 * (1 - (Number(item.lat) - minLat) / (maxLat - minLat))}%`;
+    marker.setAttribute("aria-label", markerLabel(item));
+    marker.title = markerLabel(item);
+    marker.addEventListener("click", () => item.mapType === "request" ? openRequest(Number(item.id)) : showOfflineMapItem(item));
+    hybridMap.element.appendChild(marker);
+  });
+}
+
+function showOfflineMapItem(item) {
+  if (item.mapType === "center") {
+    notify(`${item.label || "Centro de comando"} · ubicación ${item.source.toLowerCase()} · ${ago(item.captured_at)}`);
+    return;
+  }
+  notify(`${item.node} · ${item.state || "Sin estado"} · contacto ${ago(item.last_seen)} · posición ${ago(item.position_seen_at)}`);
+}
+
+function fitMapPoints() {
+  const visible = hybridMap.items.filter((item) => item.mapType === "center" || state.mapFilters[item.mapType]);
+  if (!hybridMap.map || !visible.length) return false;
+  const points = visible.map((item) => [Number(item.lat), Number(item.lon)]);
+  if (points.length === 1) hybridMap.map.setView(points[0], 15);
+  else hybridMap.map.fitBounds(points, { padding: [36, 36], maxZoom: 16 });
+  rememberMapCamera();
+  return true;
+}
+
+function rememberMapCamera() {
+  if (!hybridMap.map) return;
+  const center = hybridMap.map.getCenter();
+  hybridMap.camera = { center: [center.lat, center.lng], zoom: hybridMap.map.getZoom() };
+}
+
+function teardownMap(preserveElement = false) {
+  clearTimeout(hybridMap.tileTimer);
+  hybridMap.tileGeneration += 1;
+  if (hybridMap.map) {
+    rememberMapCamera();
+    hybridMap.map.off();
+    hybridMap.map.remove();
+  }
+  hybridMap.map = null;
+  hybridMap.tileLayer = null;
+  hybridMap.localLayer = null;
+  hybridMap.markers.clear();
+  hybridMap.mode = "offline";
+  if (!preserveElement) hybridMap.element = null;
+}
+
+function ageSeconds(value) { return value ? Math.max(0, Date.now() / 1000 - Number(value)) : Infinity; }
+function validCoordinate(lat, lon) {
+  if (lat === "" || lat == null || lon === "" || lon == null) return false;
+  const latitude = Number(lat);
+  const longitude = Number(lon);
+  return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
+}
 
 async function renderRequests() {
   const params = new URLSearchParams(state.requestFilters);
@@ -410,6 +823,9 @@ async function syncNow() {
 let pollTimer = null;
 let pollDelay = 3000;
 let sseHealthy = false;
+let eventSource = null;
+let sseRefreshTimer = null;
+let sseUpdatePending = false;
 function stopPolling() { clearTimeout(pollTimer); pollTimer = null; pollDelay = 3000; }
 function startPolling(delay = pollDelay) {
   if (pollTimer || sseHealthy) return;
@@ -424,12 +840,33 @@ function startPolling(delay = pollDelay) {
 
 function connectEvents() {
   if (!("EventSource" in window) || state.apiToken) { startPolling(); return; }
-  const source = new EventSource("/api/v1/events");
-  source.addEventListener("update", refreshCurrent);
-  source.addEventListener("open", () => { sseHealthy = true; stopPolling(); document.querySelector("#live-badge").textContent = "En vivo"; });
-  source.addEventListener("ready", () => { sseHealthy = true; stopPolling(); document.querySelector("#live-badge").textContent = "En vivo"; });
-  source.onerror = () => { sseHealthy = false; startPolling(pollDelay); };
+  eventSource = new EventSource("/api/v1/events");
+  eventSource.addEventListener("update", scheduleSseRefresh);
+  eventSource.addEventListener("open", () => { sseHealthy = true; stopPolling(); document.querySelector("#live-badge").textContent = "En vivo"; });
+  eventSource.addEventListener("ready", () => { sseHealthy = true; stopPolling(); document.querySelector("#live-badge").textContent = "En vivo"; });
+  eventSource.onerror = () => { sseHealthy = false; startPolling(pollDelay); };
 }
+
+function scheduleSseRefresh() {
+  sseUpdatePending = true;
+  if (!sseRefreshTimer) sseRefreshTimer = setTimeout(flushSseRefresh, 350);
+}
+
+async function flushSseRefresh() {
+  sseRefreshTimer = null;
+  sseUpdatePending = false;
+  const refreshed = await refreshCurrent();
+  if (!refreshed) sseUpdatePending = true;
+  if (sseUpdatePending) scheduleSseRefresh();
+}
+
+window.addEventListener("pagehide", () => {
+  clearTimeout(sseRefreshTimer);
+  clearTimeout(hybridMap.tileTimer);
+  sseRefreshTimer = null;
+  stopPolling();
+  eventSource?.close();
+});
 
 setInterval(() => { document.querySelector("#clock").textContent = new Date().toLocaleTimeString("es-CO"); }, 1000);
 syncButton.addEventListener("click", syncNow);

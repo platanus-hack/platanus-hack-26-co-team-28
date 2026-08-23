@@ -19,6 +19,10 @@ __pycache__/
 center/*.db
 center/*.db-shm
 center/*.db-wal
+center/maps/*.mbtiles
+center/maps/*.mbtiles.part
+center/maps/*.mbtiles.tmp
+center/maps/colombia-shortbread-1.0.mbtiles*
 venv/
 .venv/
 nodo_portal_https/credentials.h

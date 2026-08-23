@@ -7,8 +7,10 @@ import unittest
 from pathlib import Path
 
 import center
+import offline_map
 from api import ApiError, CommandApi
 from command_core import CenterStore, RadioFrame
+from test_offline_map import create_mbtiles
 
 
 class FakeGateway:
@@ -280,6 +282,12 @@ class MigrationTests(unittest.TestCase):
 
 class HttpSafetyTests(unittest.TestCase):
     def setUp(self):
+        self.map_directory = tempfile.TemporaryDirectory()
+        self.previous_map_manager = center.MAP_MANAGER
+        center.MAP_MANAGER = offline_map.MapManager(
+            Path(self.map_directory.name) / "bogota.mbtiles",
+            Path(self.map_directory.name) / "source.mbtiles",
+        )
         self.store = CenterStore(":memory:")
         self.gateway = FakeGateway()
         center.STORE = self.store
@@ -297,6 +305,8 @@ class HttpSafetyTests(unittest.TestCase):
         self.server.server_close()
         self.worker.join(2)
         self.store.close()
+        center.MAP_MANAGER = self.previous_map_manager
+        self.map_directory.cleanup()
 
     def request(self, method, path, body=None, headers=None):
         self.connection.request(method, path, body=body, headers=headers or {})
@@ -338,6 +348,23 @@ class HttpSafetyTests(unittest.TestCase):
         status, _content_type, _body = self.request("GET", "/web/app.js")
         self.assertEqual(status, 404)
 
+    def test_local_leaflet_assets_are_served_from_explicit_allowlist(self):
+        expected = {
+            "/vendor/leaflet-1.9.4.css": "text/css",
+            "/vendor/leaflet-1.9.4.js": "text/javascript",
+            "/vendor/leaflet-vectorgrid-1.3.0.js": "text/javascript",
+            "/vendor/LEAFLET-LICENSE.txt": "text/plain",
+            "/vendor/LEAFLET-VECTORGRID-LICENSE.txt": "text/plain",
+        }
+        for path, expected_type in expected.items():
+            status, content_type, body = self.request("GET", path)
+            self.assertEqual(status, 200)
+            self.assertTrue(content_type.startswith(expected_type))
+            self.assertGreater(len(body), 100)
+
+        status, _content_type, _body = self.request("GET", "/vendor/unknown.js")
+        self.assertEqual(status, 404)
+
     def test_static_files_support_etag_and_security_headers(self):
         self.connection.request("GET", "/app.js")
         response = self.connection.getresponse()
@@ -349,6 +376,188 @@ class HttpSafetyTests(unittest.TestCase):
         response = self.connection.getresponse()
         response.read()
         self.assertEqual(response.status, 304)
+
+    def test_only_versioned_vendor_assets_are_immutable(self):
+        for path in ("/vendor/leaflet-1.9.4.css", "/vendor/leaflet-1.9.4.js", "/vendor/leaflet-vectorgrid-1.3.0.js"):
+            self.connection.request("GET", path)
+            response = self.connection.getresponse()
+            response.read()
+            self.assertEqual(response.getheader("Cache-Control"), "public, max-age=31536000, immutable")
+
+        for path in ("/", "/app.js", "/styles.css", "/vendor/LEAFLET-LICENSE.txt", "/vendor/LEAFLET-VECTORGRID-LICENSE.txt"):
+            self.connection.request("GET", path)
+            response = self.connection.getresponse()
+            response.read()
+            self.assertEqual(response.getheader("Cache-Control"), "no-cache")
+
+    def test_leaflet_assets_negotiate_precompressed_gzip_with_representation_etags(self):
+        path = "/vendor/leaflet-1.9.4.js"
+        self.connection.request("GET", path)
+        identity = self.connection.getresponse()
+        identity_body = identity.read()
+        identity_etag = identity.getheader("ETag")
+
+        self.connection.request("GET", path, headers={"Accept-Encoding": "gzip"})
+        compressed = self.connection.getresponse()
+        compressed_body = compressed.read()
+        compressed_etag = compressed.getheader("ETag")
+
+        self.assertIsNone(identity.getheader("Content-Encoding"))
+        self.assertEqual(identity.getheader("Vary"), "Accept-Encoding")
+        self.assertEqual(compressed.getheader("Content-Encoding"), "gzip")
+        self.assertEqual(compressed.getheader("Vary"), "Accept-Encoding")
+        self.assertNotEqual(identity_etag, compressed_etag)
+        self.assertLess(len(compressed_body), len(identity_body))
+
+        self.connection.request("GET", path, headers={"Accept-Encoding": "gzip;q=0"})
+        not_acceptable = self.connection.getresponse()
+        not_acceptable.read()
+        self.assertIsNone(not_acceptable.getheader("Content-Encoding"))
+
+        self.connection.request(
+            "GET", path, headers={"Accept-Encoding": "gzip", "If-None-Match": compressed_etag}
+        )
+        cached = self.connection.getresponse()
+        cached.read()
+        self.assertEqual(cached.status, 304)
+        self.assertEqual(cached.getheader("ETag"), compressed_etag)
+        self.assertEqual(cached.getheader("Content-Encoding"), "gzip")
+        self.assertEqual(cached.getheader("Vary"), "Accept-Encoding")
+
+    def test_csp_allows_only_the_osm_tile_host_for_remote_images(self):
+        self.connection.request("GET", "/")
+        response = self.connection.getresponse()
+        response.read()
+        csp = response.getheader("Content-Security-Policy")
+        self.assertEqual(
+            csp,
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+            "img-src 'self' data: https://tile.openstreetmap.org; object-src 'none'; base-uri 'none'; "
+            "frame-ancestors 'none'",
+        )
+
+    def test_map_frontend_has_no_remote_dependency_or_custom_tile_cache(self):
+        index = (center.WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        app = (center.WEB_ROOT / "app.js").read_text(encoding="utf-8")
+        leaflet = (center.WEB_ROOT / "vendor" / "leaflet.js").read_text(encoding="utf-8")
+
+        self.assertIn("Leaflet 1.9.4", leaflet)
+        self.assertIn('href="/vendor/leaflet-1.9.4.css"', index)
+        self.assertIn('src="/vendor/leaflet-1.9.4.js" defer', index)
+        self.assertIn('src="/vendor/leaflet-vectorgrid-1.3.0.js" defer', index)
+        self.assertNotIn("cdn", index.lower())
+        self.assertEqual(app.count("https://"), 1)
+        self.assertIn('window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png"', app)
+        self.assertIn("Activar cartografía online", app)
+        self.assertIn("comparte el área visible con OpenStreetMap", app)
+        self.assertIn('sessionStorage.setItem("onlineMapConsent", "true")', app)
+        self.assertIn('sessionStorage.removeItem("onlineMapConsent")', app)
+        self.assertNotIn("navigator.onLine", app)
+        self.assertLess(app.index("sessionStorage.setItem(\"onlineMapConsent\", \"true\")"), app.index("window.L.tileLayer"))
+        for forbidden in ("serviceWorker", "CacheStorage", "caches.", "prefetch"):
+            self.assertNotIn(forbidden, app + index)
+
+    def test_map_status_requires_auth_and_does_not_expose_paths(self):
+        center.API_TOKEN = "secret-token"
+
+        status, _content_type, _body = self.request("GET", "/api/v1/map")
+        self.assertEqual(status, 401)
+
+        status, content_type, body = self.request(
+            "GET", "/api/v1/map", headers={"Authorization": "Bearer secret-token"}
+        )
+        payload = json.loads(body)
+
+        self.assertEqual(status, 200)
+        self.assertTrue(content_type.startswith("application/json"))
+        self.assertFalse(payload["available"])
+        self.assertIsNone(payload["generation"])
+        self.assertEqual(payload["bounds"], [-74.25, 4.45, -73.95, 4.85])
+        self.assertNotIn(self.map_directory.name, body.decode())
+
+    def test_map_download_requires_auth_and_allows_one_background_task(self):
+        started = threading.Event()
+        release = threading.Event()
+
+        def prepare(output, _source, progress):
+            started.set()
+            progress("downloading", 1, 2)
+            release.wait(2)
+            create_mbtiles(output, bogota_metadata=True)
+
+        center.MAP_MANAGER = offline_map.MapManager(
+            Path(self.map_directory.name) / "bogota.mbtiles",
+            Path(self.map_directory.name) / "source.mbtiles",
+            prepare,
+        )
+        center.API_TOKEN = "secret-token"
+        body = json.dumps({})
+        headers = {"Content-Type": "application/json"}
+        status, _content_type, _body = self.request("POST", "/api/v1/map/download", body, headers)
+        self.assertEqual(status, 401)
+
+        headers["Authorization"] = "Bearer secret-token"
+        status, _content_type, _body = self.request("POST", "/api/v1/map/download", body, headers)
+        self.assertEqual(status, 202)
+        self.assertTrue(started.wait(1))
+        status, _content_type, _body = self.request("POST", "/api/v1/map/download", body, headers)
+        self.assertEqual(status, 409)
+        release.set()
+
+    def test_vector_tile_headers_gzip_cache_etag_and_validation(self):
+        map_path = Path(self.map_directory.name) / "bogota.mbtiles"
+        create_mbtiles(map_path, bogota_metadata=True)
+        center.MAP_MANAGER = offline_map.MapManager(map_path)
+        map_status = center.MAP_MANAGER.status()
+        zoom = 14
+        x = offline_map.lon_to_tile_x(-74.05, zoom)
+        y = offline_map.lat_to_tile_y(4.67, zoom)
+        path = "/map/tiles/{}/{}/{}.pbf?v={}".format(zoom, x, y, map_status["generation"])
+
+        self.connection.request("GET", path)
+        response = self.connection.getresponse()
+        tile = response.read()
+        etag = response.getheader("ETag")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader("Content-Type"), "application/vnd.mapbox-vector-tile")
+        self.assertEqual(response.getheader("Content-Encoding"), "gzip")
+        self.assertEqual(response.getheader("Cache-Control"), "public, max-age=31536000, immutable")
+        self.assertEqual(tile, b"\x1f\x8btest")
+        self.connection.request("GET", path, headers={"If-None-Match": etag})
+        cached = self.connection.getresponse()
+        cached.read()
+        self.assertEqual(cached.status, 304)
+
+        for invalid in (
+            "/map/tiles/10/0/0.pbf", "/map/tiles/15/9642/15956.pbf", "/map/tiles/14/-1/0.pbf",
+            "/map/tiles/14/999999/0.pbf", "/map/tiles/14/1/..%2Fcenter.py.pbf",
+        ):
+            status, _content_type, _body = self.request("GET", invalid)
+            self.assertEqual(status, 404)
+
+    def test_vector_tile_is_unavailable_without_package(self):
+        status, _content_type, body = self.request("GET", "/map/tiles/14/4821/7978.pbf")
+        self.assertEqual(status, 404)
+        self.assertNotIn(b"Traceback", body)
+
+    def test_map_refresh_lifecycle_contracts_are_bounded_and_coalesced(self):
+        app = (center.WEB_ROOT / "app.js").read_text(encoding="utf-8")
+        styles = (center.WEB_ROOT / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn("mapItemVisualSignature", app)
+        self.assertIn("mapItemContentSignature", app)
+        self.assertIn("markerFreshness(item)", app)
+        self.assertIn("if (fitMapPoints())", app)
+        self.assertIn("initialFitDone", app)
+        self.assertIn('setTimeout(flushSseRefresh, 350)', app)
+        self.assertIn('eventSource.addEventListener("update", scheduleSseRefresh)', app)
+        self.assertIn("eventSource?.close()", app)
+        self.assertIn("maxNativeZoom: state.offlineMap.maxNativeZoom", app)
+        self.assertIn("maxZoom: state.offlineMap.maxzoom", app)
+        self.assertIn("previousTiles !== state.offlineMap.tiles", app)
+        self.assertIn("animation: resource-breathe 800ms ease-in-out 3", styles)
+        self.assertIn("animation: critical-pulse 800ms var(--ease-out) 3", styles)
+        self.assertNotIn("resource-breathe 2.4s ease-in-out infinite", styles)
 
     def test_simulator_http_guard_returns_not_found(self):
         status, _content_type, _body = self.request(
