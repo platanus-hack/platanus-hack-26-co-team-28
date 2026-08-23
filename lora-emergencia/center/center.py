@@ -19,6 +19,20 @@ GATEWAY = None
 RADIO_LOG = deque(maxlen=60)
 RADIO_LOCK = threading.Lock()
 
+# Simulacion del nodo grua/operador (sin 3ra placa fisica). El operador usa la
+# vista /grua; sus acciones inyectan frames como si vinieran por LoRa del recurso.
+GRUA_MSGID = [5000]
+SIM_RESOURCES = set()   # recursos simulados "conectados" (ej GRUA07)
+
+
+def grua_inject(origin, kind, payload):
+    """Inyecta un frame del recurso simulado en el store, como haria el gateway real."""
+    mid = GRUA_MSGID[0]; GRUA_MSGID[0] += 1
+    frame = RadioFrame(origin, "CENTRO", kind, mid, tuple(str(p) for p in payload))
+    result = STORE.ingest(frame, "-60", "8.0")
+    log_radio("RX", origin, "CENTRO", kind, mid, rssi="-60", snr="8.0")
+    return result
+
 
 def log_radio(direction, origin, destination, kind, message_id, note="", rssi=None, snr=None):
     """Registra un mensaje que cruza el centro. direction: RX (llega) o TX (sale)."""
@@ -235,6 +249,56 @@ async function tick(){try{DATA=await(await fetch('/api/state')).json();render()}
 </script></body></html>"""
 
 
+GRUA_PAGE = r"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Grua GRUA07</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif;background:#0b0f14;color:#e7e9ee}
+.hd{background:#1570ef;padding:16px;text-align:center}.hd h1{margin:0;font-size:20px}
+.hd .st{font-size:13px;opacity:.9;margin-top:4px}
+.wrap{max-width:520px;margin:0 auto;padding:14px}
+.conn{width:100%;padding:14px;border:0;border-radius:12px;background:#067647;color:#fff;font-size:17px;font-weight:700;margin-bottom:12px}
+.card{background:#141a22;border:1px solid #232c39;border-radius:14px;padding:16px;margin-bottom:12px}
+.cat{font-size:18px;font-weight:800}.p0{color:#ff6b6b}.p1{color:#ffb454}
+.meta{color:#8a93a3;font-size:13px;margin:6px 0}
+.loc{font-size:14px;margin:6px 0}
+.estado{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:#232c39}
+.btn{width:100%;padding:15px;border:0;border-radius:12px;font-size:17px;font-weight:700;color:#fff;margin-top:10px}
+.acc{background:#067647}.enr{background:#1570ef}.lug{background:#7c3aed}.res{background:#b45309}.can{background:#3a3f4a}
+.empty{color:#8a93a3;text-align:center;padding:30px}
+</style></head><body>
+<div class="hd"><h1>App del operador · GRUA07</h1><div class="st" id="st">desconectado</div></div>
+<div class="wrap">
+<button class="conn" id="conn" onclick="conectar()">Conectar mi grua (entrar en servicio)</button>
+<div id="list"></div>
+</div>
+<script>
+const e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let connected=false;
+async function conectar(){await fetch('/api/grua/connect?node=GRUA07&kind=GRUA&zone=NORTE',{method:'POST'});connected=true;document.getElementById('st').textContent='en servicio · esperando asignaciones';document.getElementById('conn').style.display='none';tick()}
+async function accept(n,s){await fetch('/api/grua/accept?resource=GRUA07&node='+encodeURIComponent(n)+'&seq='+encodeURIComponent(s),{method:'POST'});tick()}
+async function status(n,s,est){await fetch('/api/grua/status?resource=GRUA07&node='+encodeURIComponent(n)+'&seq='+encodeURIComponent(s)+'&estado='+est,{method:'POST'});tick()}
+function acciones(x){
+ let n=x.node,s=x.seq;
+ if(x.estado==='DESPACHADA')return `<button class="btn acc" onclick="accept('${e(n)}','${e(s)}')">Aceptar el viaje</button>`;
+ if(x.estado==='ACEPTADA')return `<button class="btn enr" onclick="status('${e(n)}','${e(s)}','enruta')">Voy en camino</button>`;
+ if(x.estado==='EN_CURSO')return `<button class="btn lug" onclick="status('${e(n)}','${e(s)}','enlugar')">Llegue al lugar</button><button class="btn res" onclick="status('${e(n)}','${e(s)}','resuelta')">Rescate resuelto</button>`;
+ return '';
+}
+async function tick(){
+ let d;try{d=await(await fetch('/api/state')).json()}catch(_){return}
+ let mine=(d.requests||[]).filter(x=>x.operador==='GRUA07'&&!['RESUELTA','CANCELADA'].includes(x.estado));
+ let box=document.getElementById('list');
+ if(!connected){box.innerHTML='<div class="empty">Toca el boton verde para entrar en servicio.</div>';return}
+ if(!mine.length){box.innerHTML='<div class="empty">En servicio. Sin asignaciones por ahora.</div>';return}
+ box.innerHTML=mine.map(x=>{let loc=(x.lat&&x.lon)?(x.lat+', '+x.lon):(x.lugar||'sin ubicacion');
+  return `<div class="card"><div class="cat p${x.pri}">${e(x.cat)} · prioridad ${x.pri}</div>
+   <div class="loc">📍 ${e(loc)}</div><div class="meta">${e(x.detalle||'-')} · de ${e(x.node)}</div>
+   <span class="estado">${e(x.estado)}</span>${acciones(x)}</div>`}).join('')
+}
+tick();setInterval(tick,2000);
+</script></body></html>"""
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass
@@ -255,6 +319,14 @@ class Handler(BaseHTTPRequestHandler):
                 state["radio"] = list(RADIO_LOG)
             self.send_json(200, state)
             return
+        if self.path.startswith("/grua"):
+            body = GRUA_PAGE.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         body = PAGE.encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -264,12 +336,40 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         query = parse_qs(urlparse(self.path).query)
+        # --- Simulacion del operador de grua (nodo recurso sin 3ra placa) ---
+        if self.path.startswith("/api/grua/connect"):
+            node = clean_field(query.get("node", ["GRUA07"])[0], 24) or "GRUA07"
+            kind = clean_field(query.get("kind", ["GRUA"])[0], 24) or "GRUA"
+            zone = clean_field(query.get("zone", ["NORTE"])[0], 24) or "NORTE"
+            SIM_RESOURCES.add(node)
+            grua_inject(node, "HB", (kind, zone))
+            self.send_json(200, {"ok": True, "node": node})
+            return
+        if self.path.startswith("/api/grua/accept"):
+            node = clean_field(query.get("node", [""])[0], 24)          # nodo civil de la solicitud
+            seq = clean_field(query.get("seq", [""])[0], 12)
+            resource = clean_field(query.get("resource", ["GRUA07"])[0], 24) or "GRUA07"
+            result = grua_inject(resource, "ACC", (node, seq))
+            self.send_json(200 if result == "UPDATED" else 409, {"ok": result == "UPDATED", "result": result})
+            return
+        if self.path.startswith("/api/grua/status"):
+            node = clean_field(query.get("node", [""])[0], 24)
+            seq = clean_field(query.get("seq", [""])[0], 12)
+            estado = clean_field(query.get("estado", [""])[0], 16)
+            resource = clean_field(query.get("resource", ["GRUA07"])[0], 24) or "GRUA07"
+            result = grua_inject(resource, "ST", (node, seq, estado))
+            self.send_json(200 if result == "UPDATED" else 409, {"ok": result == "UPDATED", "result": result})
+            return
         if self.path.startswith("/api/dispatch"):
             try:
                 request_id = int(query.get("id", ["0"])[0])
                 resource = clean_field(query.get("resource", [""])[0], 24)
                 frame, _request = STORE.build_dispatch(request_id, resource)
                 delivered, result = GATEWAY.send_reliable(frame) if GATEWAY else (False, "GATEWAY_OFFLINE")
+                # Grua simulada: sin 3ra placa no hay ACK de radio; si el recurso esta
+                # "conectado" como simulado, damos por entregado el despacho.
+                if not delivered and resource in SIM_RESOURCES:
+                    delivered, result = True, "SIM_DELIVERED"
                 if not delivered:
                     self.send_json(503, {"ok": False, "error": result})
                     return
