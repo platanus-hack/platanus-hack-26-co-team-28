@@ -163,7 +163,7 @@ input.text,textarea.text{width:100%;padding:14px;font-size:16px;border:1.5px sol
     <div id="fallo" class="fallo" role="alert" style="display:none"></div>
     <!-- La ubicacion es opcional: se avisa, no se bloquea el pedido. -->
     <div id="nota-ubic" class="nota-ubic" style="display:none">Vas a pedir ayuda <b>sin ubicación</b>. Puedes enviar igual. Si puedes, escribe el lugar arriba.</div>
-    <button class="btn danger" id="send" onclick="enviar()" disabled><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>Pedir ayuda</button>
+    <button class="btn danger" id="send" onclick="enviar()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>Pedir ayuda</button>
     <button class="btn ghost" onclick="go('home')">Cancelar</button>
   </section>
 
@@ -373,15 +373,19 @@ function actualizarContador(){ document.getElementById('msgcount').textContent=d
 document.getElementById('msg').addEventListener('input', actualizarContador);
 document.getElementById('lugar').addEventListener('input', revisarListo);
 
-// La ubicacion NO es obligatoria. Basta elegir la situacion.
-// Antes el boton exigia GPS o un lugar escrito. En una emergencia eso bloquea
-// el pedido justo cuando mas urge: el GPS del portal cautivo casi nunca
-// funciona, y alguien en panico no va a escribir una direccion. El centro
-// recibe el pedido igual y el nodo que lo transmite ya dice por donde entro.
-// El aviso de "sin ubicacion" se da al lado del boton, no apagandolo.
+// El boton "Pedir ayuda" NUNCA se apaga.
+// 1. La ubicacion no es obligatoria. El GPS del portal cautivo casi nunca
+//    funciona y alguien en panico no va a escribir una direccion. El centro
+//    acepta el SOS sin lat/lon/lugar, y el nodo que lo recibe ya dice por
+//    donde entro. La norma NENA-STA-020.1-2020 §2.2.8 dice que la respuesta
+//    sale "con la mejor ubicacion disponible", no con una ubicacion exacta.
+// 2. Tampoco se apaga por falta de situacion. Los sistemas de diseno de
+//    GOV.UK y del NHS dicen lo mismo: un boton apagado tiene mal contraste,
+//    no recibe foco de teclado y no explica POR QUE no se puede. Mejor
+//    dejarlo vivo y, si falta algo, decirlo con un error claro al tocarlo.
+// Aqui solo mostramos el aviso de "sin ubicacion", que no bloquea nada.
 function revisarListo(){
   var sinUbic = !(S.lat && S.lon) && document.getElementById('lugar').value.trim().length===0;
-  document.getElementById('send').disabled = !S.cat;
   var nota=document.getElementById('nota-ubic');
   if(nota) nota.style.display = (S.cat && sinUbic) ? 'block' : 'none';
 }
@@ -401,6 +405,13 @@ async function pulsar(btn, textoOcupado, accion){
 }
 
 async function enviar(){
+  // Falta la situacion: en vez de tener el boton apagado (que no explica
+  // nada), lo decimos con un error y llevamos la vista a la reja de opciones.
+  if(!S.cat){
+    mostrarFallo('Toca una de las 5 opciones de arriba para decir qué pasa.', 'fallo', 'Falta elegir la situación');
+    document.getElementById('cats').scrollIntoView({block:'center'});
+    return;
+  }
   var lugar=document.getElementById('lugar').value.trim();
   var detalle=document.getElementById('msg').value.trim();
   // Frame del protocolo: SOS con cat|pri|lat|lon|lugar|detalle. El ciudadano NO
