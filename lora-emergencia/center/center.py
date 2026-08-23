@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from command_core import CenterStore, RadioFrame, clean_field
+from triage import triage_request, triage_requests
 
 
 STORE = None
@@ -212,12 +213,19 @@ def handle_gateway_line(line):
 
 def seed_demo(store):
     frames = [
-        "CIVIL1|CENTRO|SOS|1|RESCATE|0|4.6767|-74.0483|-|2 atrapados sotano",
-        "CIVIL2|CENTRO|SOS|1|MEDICO|0|4.6712|-74.0530|-|herido inconsciente",
-        "CIVIL3|CENTRO|SOS|1|GRUA|1|||Portal 80 con calle 13|carro sobre persona",
-        "CIVIL4|CENTRO|OK|1|Juan Perez|CC1032456|4.6790|-74.0470|apto 402",
+        "CIVIL1|CENTRO|SOS|1|RESCATE|1|4.6767|-74.0483|-|2 atrapados sotano",
+        "CIVIL2|CENTRO|SOS|1|MEDICO|2|4.6712|-74.0530|-|herido inconsciente",
+        "CIVIL3|CENTRO|SOS|1|GRUA|2|||Portal 80 con calle 13|vehiculo bloqueando via",
+        "CIVIL4|CENTRO|SOS|1|AGUA|3|||Colegio central|familia sin agua",
+        "CIVIL5|CENTRO|OK|1|Juan Perez|CC1032456|4.6790|-74.0470|apto 402",
         "GRUA07|CENTRO|HB|1|GRUA|NORTE|-|1",
         "GRUA07|CENTRO|POS|2|4.6752|-74.0491|12|0|disponible",
+        "MEDICO01|CENTRO|HB|1|MEDICO|NORTE|-|1",
+        "MEDICO01|CENTRO|POS|2|4.6720|-74.0522|8|0|disponible",
+        "RESCATE01|CENTRO|HB|1|RESCATE|NORTE|-|1",
+        "RESCATE01|CENTRO|POS|2|4.6770|-74.0480|10|0|disponible",
+        "AGUA01|CENTRO|HB|1|AGUA|CENTRO|-|1",
+        "AGUA01|CENTRO|POS|2|4.6740|-74.0500|15|0|disponible",
     ]
     for raw in frames:
         frame = RadioFrame.parse(raw)
@@ -314,6 +322,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/api/state"):
             state = STORE.state()
+            state["requests"] = triage_requests(state["requests"], state["resources"])
             state["gateway"] = bool(GATEWAY and GATEWAY.connected)
             with RADIO_LOCK:
                 state["radio"] = list(RADIO_LOG)
@@ -361,10 +370,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200 if result == "UPDATED" else 409, {"ok": result == "UPDATED", "result": result})
             return
         if self.path.startswith("/api/dispatch"):
+            reserved = False
             try:
                 request_id = int(query.get("id", ["0"])[0])
                 resource = clean_field(query.get("resource", [""])[0], 24)
-                frame, _request = STORE.build_dispatch(request_id, resource)
+                state = STORE.state()
+                request = next((item for item in state["requests"] if item["id"] == request_id), None)
+                if not request:
+                    raise ValueError("request not found")
+                priority = triage_request(request, state["resources"])["priority"]
+                frame, _request = STORE.reserve_dispatch(request_id, resource, priority)
+                reserved = True
                 delivered, result = GATEWAY.send_reliable(frame) if GATEWAY else (False, "GATEWAY_OFFLINE")
                 # Grua simulada: sin 3ra placa no hay ACK de radio; si el recurso esta
                 # "conectado" como simulado, damos por entregado el despacho.
@@ -376,9 +392,13 @@ class Handler(BaseHTTPRequestHandler):
                 STORE.mark_dispatched(request_id, resource, frame)
                 if GATEWAY and not getattr(GATEWAY, "emits_tx_sent", False):
                     log_radio("TX", frame.origin, frame.destination, frame.kind, frame.message_id)
+                reserved = False
                 self.send_json(200, {"ok": True, "messageId": frame.message_id})
             except (ValueError, TypeError) as exc:
                 self.send_json(409, {"ok": False, "error": str(exc)})
+            finally:
+                if reserved:
+                    STORE.release_dispatch(request_id, resource)
             return
         if self.path.startswith("/api/broadcast"):
             message = clean_field(query.get("message", [""])[0], 80)

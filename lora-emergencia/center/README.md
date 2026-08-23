@@ -62,3 +62,18 @@ El stack es una decisión de diseño inicial, no una implementación presente. A
 ## Estado actual
 
 `center.py` ya conserva el estado en SQLite, opera sin CDN, recibe frames universales y puede despachar o emitir broadcasts mediante el gateway. El mapa actual es un esquema de coordenadas; la cartografía local sigue pendiente.
+
+## Simular triage sin hardware
+
+```bash
+cd lora-emergencia/center
+python3 center.py --demo
+```
+
+Abre `http://localhost:8080`. El demo carga solicitudes y recursos sintéticos, escala señales críticas sin reducir la prioridad reportada y recomienda el recurso compatible disponible más cercano. Toda asignación sigue requiriendo confirmación humana.
+
+Para ejecutar las pruebas:
+
+```bash
+python3 -m unittest -v
+```

@@ -9,8 +9,9 @@ from dataclasses import dataclass
 
 
 VALID_CATEGORIES = {"GRUA", "MEDICO", "RESCATE", "AGUA", "FUEGO"}
-VALID_RESOURCE_STATES = {"disponible", "enruta", "enlugar", "resuelta", "cancelada"}
+VALID_RESOURCE_STATES = {"disponible", "reservado", "asignado", "enruta", "enlugar", "resuelta", "cancelada"}
 TERMINAL_STATES = {"RESUELTA", "CANCELADA"}
+RESOURCE_MAX_AGE_SECONDS = 10 * 60
 
 
 def clean_field(value: object, max_length: int = 80) -> str:
@@ -99,6 +100,7 @@ class CenterStore:
                     lon TEXT NOT NULL DEFAULT '',
                     accuracy TEXT NOT NULL DEFAULT '',
                     last_seen REAL NOT NULL,
+                    position_seen_at REAL NOT NULL DEFAULT 0,
                     rssi TEXT NOT NULL DEFAULT '',
                     snr TEXT NOT NULL DEFAULT ''
                 );
@@ -133,6 +135,16 @@ class CenterStore:
                 );
                 """
             )
+            resource_columns = {row[1] for row in self._db.execute("PRAGMA table_info(resources)")}
+            if "position_seen_at" not in resource_columns:
+                self._db.execute(
+                    "ALTER TABLE resources ADD COLUMN position_seen_at REAL NOT NULL DEFAULT 0"
+                )
+            self._db.execute(
+                "UPDATE requests SET state='ENVIO_INDETERMINADO',updated_at=? WHERE state='ENVIANDO'",
+                (time.time(),),
+            )
+            self._db.execute("UPDATE resources SET state='asignado' WHERE state='reservado'")
 
     def next_message_id(self) -> int:
         with self._lock, self._db:
@@ -251,6 +263,8 @@ class CenterStore:
                 "UPDATE requests SET state=?,updated_at=? WHERE id=?",
                 (new_state, time.time(), request["id"]),
             )
+            resource_state = "disponible" if new_state in TERMINAL_STATES else frame.payload[2]
+            self._db.execute("UPDATE resources SET state=? WHERE node=?", (resource_state, frame.origin))
         return "UPDATED"
 
     def _ingest_position(self, frame: RadioFrame, rssi: str, snr: str) -> str:
@@ -261,12 +275,20 @@ class CenterStore:
         state = frame.payload[4] if len(frame.payload) > 4 else "disponible"
         if state not in VALID_RESOURCE_STATES:
             state = "disponible"
+        now = time.time()
         with self._lock, self._db:
             self._db.execute(
-                "INSERT INTO resources(node,state,lat,lon,accuracy,last_seen,rssi,snr) VALUES(?,?,?,?,?,?,?,?) "
-                "ON CONFLICT(node) DO UPDATE SET state=excluded.state,lat=excluded.lat,lon=excluded.lon,"
-                "accuracy=excluded.accuracy,last_seen=excluded.last_seen,rssi=excluded.rssi,snr=excluded.snr",
-                (frame.origin, state, clean_field(lat), clean_field(lon), clean_field(accuracy), time.time(), rssi, snr),
+                "INSERT INTO resources(node,state,lat,lon,accuracy,last_seen,position_seen_at,rssi,snr) "
+                "VALUES(?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(node) DO UPDATE SET "
+                "state=CASE WHEN resources.state IN ('reservado','asignado','enruta','enlugar') "
+                "THEN resources.state ELSE excluded.state END,lat=excluded.lat,lon=excluded.lon,"
+                "accuracy=excluded.accuracy,last_seen=excluded.last_seen,"
+                "position_seen_at=excluded.position_seen_at,rssi=excluded.rssi,snr=excluded.snr",
+                (
+                    frame.origin, state, clean_field(lat), clean_field(lon), clean_field(accuracy),
+                    now, now, rssi, snr,
+                ),
             )
         return "UPDATED"
 
@@ -313,7 +335,9 @@ class CenterStore:
             )
         self.record_event("OUT", frame, frame.encode(), "SENT_UNCONFIRMED")
 
-    def build_dispatch(self, request_id: int, resource_node: str) -> tuple[RadioFrame, sqlite3.Row]:
+    def _build_dispatch(
+        self, request_id: int, resource_node: str, effective_priority: int | None = None
+    ) -> tuple[RadioFrame, sqlite3.Row]:
         resource_node = clean_field(resource_node, 24)
         if not resource_node:
             raise ValueError("resource node is required")
@@ -323,24 +347,72 @@ class CenterStore:
                 raise ValueError("request not found")
             if request["state"] != "PENDIENTE":
                 raise ValueError("request is not pending")
+            resource = self._db.execute("SELECT * FROM resources WHERE node=?", (resource_node,)).fetchone()
+            if not resource:
+                raise ValueError("resource not found")
+            if resource["kind"].upper() != request["category"]:
+                raise ValueError("resource is not compatible with request category")
+            if resource["state"] != "disponible":
+                raise ValueError("resource is not available")
+            if time.time() - resource["last_seen"] > RESOURCE_MAX_AGE_SECONDS:
+                raise ValueError("resource has stale communication")
+            priority = request["priority"]
+            if effective_priority is not None:
+                priority = min(priority, max(0, min(3, int(effective_priority))))
             frame = RadioFrame(
                 "CENTRO", resource_node, "DISP", self.next_message_id(),
                 (
                     request["node"], str(request["seq"]), request["lat"], request["lon"],
-                    request["place"], request["category"], str(request["priority"]), request["detail"],
+                    request["place"], request["category"], str(priority), request["detail"],
                 ),
             )
             return frame, request
+
+    def reserve_dispatch(
+        self, request_id: int, resource_node: str, effective_priority: int | None = None
+    ) -> tuple[RadioFrame, sqlite3.Row]:
+        with self._lock, self._db:
+            frame, request = self._build_dispatch(request_id, resource_node, effective_priority)
+            request_cursor = self._db.execute(
+                "UPDATE requests SET state='ENVIANDO',resource_node=?,updated_at=? "
+                "WHERE id=? AND state='PENDIENTE'",
+                (resource_node, time.time(), request_id),
+            )
+            resource_cursor = self._db.execute(
+                "UPDATE resources SET state='reservado' WHERE node=? AND state='disponible'",
+                (resource_node,),
+            )
+            if request_cursor.rowcount != 1 or resource_cursor.rowcount != 1:
+                raise ValueError("request or resource was reserved concurrently")
+            return frame, request
+
+    def release_dispatch(self, request_id: int, resource_node: str) -> None:
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE requests SET state='PENDIENTE',resource_node=NULL,updated_at=? "
+                "WHERE id=? AND state='ENVIANDO' AND resource_node=?",
+                (time.time(), request_id, resource_node),
+            )
+            self._db.execute(
+                "UPDATE resources SET state='disponible' WHERE node=? AND state='reservado'",
+                (resource_node,),
+            )
 
     def mark_dispatched(self, request_id: int, resource_node: str, frame: RadioFrame) -> None:
         with self._lock, self._db:
             cursor = self._db.execute(
                 "UPDATE requests SET state='DESPACHADA',resource_node=?,updated_at=? "
-                "WHERE id=? AND state='PENDIENTE'",
-                (resource_node, time.time(), request_id),
+                "WHERE id=? AND state='ENVIANDO' AND resource_node=?",
+                (resource_node, time.time(), request_id, resource_node),
             )
             if cursor.rowcount != 1:
                 raise ValueError("request was assigned concurrently")
+            resource_cursor = self._db.execute(
+                "UPDATE resources SET state='asignado' WHERE node=? AND state='reservado'",
+                (resource_node,),
+            )
+            if resource_cursor.rowcount != 1:
+                raise ValueError("resource reservation was lost")
         self.record_event("OUT", frame, frame.encode(), "DELIVERED")
 
     def state(self) -> dict:

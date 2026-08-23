@@ -27,7 +27,8 @@ class RadioFrameTests(unittest.TestCase):
 class CenterStoreTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
-        self.store = CenterStore(str(Path(self.tempdir.name) / "center.db"))
+        self.db_path = str(Path(self.tempdir.name) / "center.db")
+        self.store = CenterStore(self.db_path)
 
     def tearDown(self):
         self.store.close()
@@ -36,6 +37,10 @@ class CenterStoreTests(unittest.TestCase):
     def add_sos(self):
         frame = RadioFrame.parse("CIVIL1|CENTRO|SOS|7|MEDICO|0|4.1|-74.1|-|herido")
         return self.store.ingest(frame, "-70", "8")
+
+    def add_resource(self, node="GRUA07", kind="MEDICO"):
+        frame = RadioFrame.parse(f"{node}|CENTRO|HB|1|{kind}|NORTE")
+        return self.store.ingest(frame, "-60", "9")
 
     def test_sos_is_idempotent_by_origin_and_message_id(self):
         self.assertEqual(self.add_sos(), "CREATED")
@@ -50,8 +55,9 @@ class CenterStoreTests(unittest.TestCase):
 
     def test_dispatch_accept_and_resolve_follow_state_machine(self):
         self.add_sos()
+        self.add_resource()
         request_id = self.store.state()["requests"][0]["id"]
-        dispatch, _ = self.store.build_dispatch(request_id, "GRUA07")
+        dispatch, _ = self.store.reserve_dispatch(request_id, "GRUA07")
         self.assertEqual(dispatch.payload[:2], ("CIVIL1", "7"))
         self.store.mark_dispatched(request_id, "GRUA07", dispatch)
 
@@ -64,14 +70,91 @@ class CenterStoreTests(unittest.TestCase):
         resolved = RadioFrame.parse("GRUA07|CENTRO|ST|4|CIVIL1|7|resuelta")
         self.assertEqual(self.store.ingest(resolved), "UPDATED")
         self.assertEqual(self.store.state()["requests"][0]["estado"], "RESUELTA")
+        self.assertEqual(self.store.state()["resources"][0]["state"], "disponible")
 
     def test_cannot_dispatch_request_twice(self):
         self.add_sos()
+        self.add_resource()
         request_id = self.store.state()["requests"][0]["id"]
-        dispatch, _ = self.store.build_dispatch(request_id, "GRUA07")
+        dispatch, _ = self.store.reserve_dispatch(request_id, "GRUA07")
         self.store.mark_dispatched(request_id, "GRUA07", dispatch)
         with self.assertRaisesRegex(ValueError, "not pending"):
-            self.store.build_dispatch(request_id, "GRUA08")
+            self.store.reserve_dispatch(request_id, "GRUA08")
+
+    def test_dispatch_validates_resource_and_uses_effective_priority(self):
+        self.add_sos()
+        self.add_resource()
+        request_id = self.store.state()["requests"][0]["id"]
+
+        with self.assertRaisesRegex(ValueError, "resource not found"):
+            self.store.reserve_dispatch(request_id, "UNKNOWN", 0)
+        dispatch, _request = self.store.reserve_dispatch(request_id, "GRUA07", 0)
+
+        self.assertEqual(dispatch.payload[6], "0")
+
+    def test_dispatch_rejects_incompatible_or_unavailable_resource(self):
+        self.add_sos()
+        self.add_resource("GRUA07", "GRUA")
+        self.add_resource("MEDICO01", "MEDICO")
+        self.store.ingest(RadioFrame.parse("MEDICO01|CENTRO|POS|2|4.1|-74.1|10|0|enruta"))
+        request_id = self.store.state()["requests"][0]["id"]
+
+        with self.assertRaisesRegex(ValueError, "not compatible"):
+            self.store.reserve_dispatch(request_id, "GRUA07")
+        with self.assertRaisesRegex(ValueError, "not available"):
+            self.store.reserve_dispatch(request_id, "MEDICO01")
+
+    def test_dispatch_rejects_resource_with_stale_communication(self):
+        self.add_sos()
+        self.add_resource("MEDICO01", "MEDICO")
+        with self.store._db:
+            self.store._db.execute(
+                "UPDATE resources SET last_seen=? WHERE node='MEDICO01'",
+                (time.time() - 601,),
+            )
+        request_id = self.store.state()["requests"][0]["id"]
+
+        with self.assertRaisesRegex(ValueError, "stale communication"):
+            self.store.reserve_dispatch(request_id, "MEDICO01")
+
+    def test_dispatch_reservation_prevents_double_assignment_and_can_be_released(self):
+        self.add_sos()
+        self.store.ingest(RadioFrame.parse("CIVIL2|CENTRO|SOS|8|MEDICO|1|4.2|-74.2|-|herido"))
+        self.add_resource("MEDICO01", "MEDICO")
+        requests = self.store.state()["requests"]
+
+        self.store.reserve_dispatch(requests[0]["id"], "MEDICO01")
+        with self.assertRaisesRegex(ValueError, "not available"):
+            self.store.reserve_dispatch(requests[1]["id"], "MEDICO01")
+
+        self.store.release_dispatch(requests[0]["id"], "MEDICO01")
+        dispatch, _request = self.store.reserve_dispatch(requests[1]["id"], "MEDICO01")
+        self.assertEqual(dispatch.destination, "MEDICO01")
+
+    def test_position_cannot_make_reserved_resource_available(self):
+        self.add_sos()
+        self.store.ingest(RadioFrame.parse("CIVIL2|CENTRO|SOS|8|MEDICO|1|4.2|-74.2|-|herido"))
+        self.add_resource("MEDICO01", "MEDICO")
+        requests = self.store.state()["requests"]
+        self.store.reserve_dispatch(requests[0]["id"], "MEDICO01")
+
+        self.store.ingest(RadioFrame.parse("MEDICO01|CENTRO|POS|2|4.1|-74.1|10|0|disponible"))
+
+        self.assertEqual(self.store.state()["resources"][0]["state"], "reservado")
+        with self.assertRaisesRegex(ValueError, "not available"):
+            self.store.reserve_dispatch(requests[1]["id"], "MEDICO01")
+
+    def test_restart_marks_incomplete_dispatch_for_human_review(self):
+        self.add_sos()
+        self.add_resource("MEDICO01", "MEDICO")
+        request_id = self.store.state()["requests"][0]["id"]
+        self.store.reserve_dispatch(request_id, "MEDICO01")
+        self.store.close()
+
+        self.store = CenterStore(self.db_path)
+
+        self.assertEqual(self.store.state()["requests"][0]["state"], "ENVIO_INDETERMINADO")
+        self.assertEqual(self.store.state()["resources"][0]["state"], "asignado")
 
     def test_broadcast_receipts_are_deduplicated_per_node(self):
         broadcast = RadioFrame("CENTRO", "BCAST", "BC", 30, ("ALL", "URGENT", "9999999999", "Evacuar"))
