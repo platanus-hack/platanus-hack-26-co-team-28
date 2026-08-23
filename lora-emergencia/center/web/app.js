@@ -105,7 +105,19 @@ const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0])
 // input oculto envia el valor como "actor" para que el submit (FormData) siga
 // funcionando igual. `label` es el TIPO de operador (va en el <label> del campo,
 // visible antes del chip) y `detail` es el subtitulo dentro del chip.
-const operadorTag = (label, name, detail) => `<div class="field"><label>${escapeHtml(label)}</label><div class="user-tag"><span class="user-tag-avatar">${escapeHtml(initials(name))}</span><span class="user-tag-body"><span class="user-tag-name">${escapeHtml(name)}</span><span class="user-tag-role">${escapeHtml(detail)}</span></span><input type="hidden" name="actor" value="${escapeHtml(name)}"></div></div>`;
+// comoActor: si este chip es QUIEN TOMA la decisión, manda su nombre como
+// `actor` al backend. Por defecto NO lo manda. Antes lo mandaba siempre, así
+// que el chip "Unidad asignada" del despacho firmaba el timeline con el nombre
+// de la unidad que recibe, no con el del operador del centro que decide. El
+// registro quedaba diciendo que Daniela Quintero se despachó a sí misma.
+const operadorTag = (label, name, detail, comoActor = false) => `<div class="field"><label>${escapeHtml(label)}</label><div class="user-tag"><span class="user-tag-avatar">${escapeHtml(initials(name))}</span><span class="user-tag-body"><span class="user-tag-name">${escapeHtml(name)}</span><span class="user-tag-role">${escapeHtml(detail)}</span></span>${comoActor ? `<input type="hidden" name="actor" value="${escapeHtml(name)}">` : ""}</div></div>`;
+// Cómo se llama la unidad que atiende cada categoría. El formulario de despacho
+// decía "grúa" para TODO: una solicitud de rescate ofrecía equipos de rescate
+// bajo el título "Solicitar grúa", así que el operador creía haber mandado una
+// grúa cuando mandaba otra cosa.
+const NOMBRE_UNIDAD = { GRUA: "grúa", MEDICO: "ambulancia", RESCATE: "equipo de rescate", FUEGO: "unidad de bomberos", AGUA: "unidad de agua" };
+const nombreUnidad = (category) => NOMBRE_UNIDAD[String(category || "").toUpperCase()] || "unidad";
+const enMayuscula = (texto) => texto.charAt(0).toUpperCase() + texto.slice(1);
 // Cada unidad tiene una persona a cargo. La tabla vive en operadores.js,
 // compartida con la vista de operador (grua.js). Toda unidad se puede operar
 // desde /grua?nodo=NODO, así que despachar a cualquiera avanza igual.
@@ -902,13 +914,17 @@ async function openRequest(id) {
 function dispatchForm(request, candidates, suggested) {
   // El operador ELIGE la unidad de la lista de disponibles y compatibles (la más
   // cercana primero; la recomendada por el triage viene pre-seleccionada).
+  // La opción lleva el NOMBRE de quien la conduce, no solo el código del nodo.
+  // Con solo "RESCATE01" nadie ve a quién le está mandando el trabajo.
   const options = candidates.map((c) => {
     const dist = c.distance_km == null ? "disponible · distancia desconocida" : `${c.distance_km} km`;
     const selected = c.node === suggested ? " selected" : "";
     const sufijo = esRecursoSimulado(c.node) ? " · simulado" : "";
-    return `<option value="${escapeHtml(c.node)}"${selected}>${escapeHtml(c.node)} · ${escapeHtml(dist)}${sufijo}</option>`;
+    const quien = window.operadorDe(c.node).nombre;
+    return `<option value="${escapeHtml(c.node)}"${selected}>${escapeHtml(quien)} · ${escapeHtml(c.node)} · ${escapeHtml(dist)}${sufijo}</option>`;
   }).join("");
-  return `<section class="detail-section"><h3>Solicitar grúa</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">Grúa disponible y compatible</label><select id="resource-node" name="resource_node" required>${options}</select></div><div id="dispatch-operador">${chipOperadorParaRecurso(suggested)}</div><div class="field"><label for="dispatch-reason">Motivo</label>${chipsMotivo([...(MOTIVOS_DESPACHO[request.category] || []), ...MOTIVOS_DESPACHO_COMUNES], "dispatch-reason")}<textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Solicitar a la grúa</button></div></form></section>`;
+  const unidad = nombreUnidad(request.category);
+  return `<section class="detail-section"><h3>Solicitar ${escapeHtml(unidad)}</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">${escapeHtml(enMayuscula(unidad))} disponible y compatible</label><select id="resource-node" name="resource_node" required>${options}</select></div><div id="dispatch-operador">${chipOperadorParaRecurso(suggested)}</div>${operadorTag("Decide y firma", OPERADOR_CENTRO, "Operador de centro · puesto de mando", true)}<div class="field"><label for="dispatch-reason">Motivo</label>${chipsMotivo([...(MOTIVOS_DESPACHO[request.category] || []), ...MOTIVOS_DESPACHO_COMUNES], "dispatch-reason")}<textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Solicitar ${escapeHtml(unidad)}</button></div></form></section>`;
 }
 function humanActions(request) {
   const actions = [];
@@ -917,7 +933,7 @@ function humanActions(request) {
   if (["PENDIENTE", "EN_REVISION"].includes(request.state) && !request.resource_node) actions.push(["cancel", "Cancelar"]);
   if (["ACEPTADA", "EN_CURSO"].includes(request.state)) actions.push(["resolve", "Resolver"]);
   if (!actions.length) return "";
-  return `<section class="detail-section"><h3>Acción humana</h3><form id="action-form" data-request-id="${request.id}" class="review"><div class="field"><label for="action">Acción</label><select id="action" name="action">${actions.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div>${operadorTag("Operador de centro", OPERADOR_CENTRO, "Puesto de mando")}<div class="field"><label for="action-reason">Motivo obligatorio</label><div id="action-motivos">${chipsMotivo(MOTIVOS_ACCION[actions[0][0]] || [], "action-reason")}</div><textarea id="action-reason" name="reason" required minlength="3" maxlength="240"></textarea></div><div class="form-actions"><button class="button" type="submit">Registrar acción</button></div></form></section>`;
+  return `<section class="detail-section"><h3>Acción humana</h3><form id="action-form" data-request-id="${request.id}" class="review"><div class="field"><label for="action">Acción</label><select id="action" name="action">${actions.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div>${operadorTag("Operador de centro", OPERADOR_CENTRO, "Puesto de mando", true)}<div class="field"><label for="action-reason">Motivo obligatorio</label><div id="action-motivos">${chipsMotivo(MOTIVOS_ACCION[actions[0][0]] || [], "action-reason")}</div><textarea id="action-reason" name="reason" required minlength="3" maxlength="240"></textarea></div><div class="form-actions"><button class="button" type="submit">Registrar acción</button></div></form></section>`;
 }
 async function submitDispatch(event) {
   event.preventDefault();
