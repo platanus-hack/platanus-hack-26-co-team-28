@@ -15,6 +15,7 @@ describe("guías de IA del onboarding", () => {
     const prompt = buildAssistantPrompt("antenna");
 
     expect(prompt.instructions).toContain("Responde siempre en español");
+    expect(prompt.instructions).toContain("máximo 45 palabras");
     expect(prompt.context).toContain("Conecta primero la antena");
     expect(prompt.context).toContain("lora-emergencia/docs/HARDWARE.md");
   });

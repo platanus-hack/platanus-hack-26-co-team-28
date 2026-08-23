@@ -3,6 +3,17 @@ import { describe, expect, test } from "bun:test";
 import { resourceOnboarding } from "./onboarding";
 
 describe("onboarding del nodo de recurso", () => {
+  test("mantiene cada paso breve y enlazado a una fuente del repositorio", () => {
+    const guide = resourceOnboarding();
+
+    for (const step of guide.steps) {
+      expect(step.facts.length).toBeLessThanOrEqual(3);
+      expect(step.documentation).toStartWith(
+        "https://github.com/platanus-hack/platanus-hack-26-co-team-28/",
+      );
+    }
+  });
+
   test("obliga a conectar la antena antes de alimentar o flashear la placa", () => {
     const guide = resourceOnboarding();
     const antenna = guide.steps.findIndex((step) => step.id === "antenna");

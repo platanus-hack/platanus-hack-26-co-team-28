@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       model: anthropic(process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5"),
       instructions: prompt.instructions,
       prompt: `Explica este paso usando el siguiente contexto:\n\n${prompt.context}`,
-      maxOutputTokens: 400,
+      maxOutputTokens: 180,
       providerOptions: { anthropic: { effort: "low" } },
     });
     return NextResponse.json(

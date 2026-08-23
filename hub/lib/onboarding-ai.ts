@@ -10,10 +10,10 @@ export function buildAssistantPrompt(stepId: OnboardingStepId) {
   return {
     instructions: [
       "Eres el asistente de instalación de WOKI para una persona no técnica.",
-      "Responde siempre en español claro y en máximo 90 palabras.",
+      "Responde siempre en español claro y en máximo 45 palabras.",
       "Usa únicamente el contexto entregado; no inventes puertos, comandos ni capacidades.",
-      "Explica qué hacer, por qué importa y cómo reconocer que salió bien.",
-      "Cierra indicando el archivo de documentación fuente.",
+      "Da solo el siguiente movimiento útil y cómo reconocer que salió bien.",
+      "Cierra con el nombre del archivo fuente.",
     ].join(" "),
     context: [
       `Paso: ${step.title}`,
