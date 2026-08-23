@@ -61,6 +61,15 @@ const ago = (value) => {
 const priorityBadge = (value) => `<span class="badge ${value === 0 ? "critical" : value === 1 ? "warning" : ""}">Prioridad ${value}</span>`;
 const stateBadge = (value) => `<span class="badge ${value === "disponible" || value === "RESUELTA" ? "success" : value === "CANCELADA" ? "critical" : ""}">${escapeHtml(value)}</span>`;
 const empty = (message) => `<div class="empty">${escapeHtml(message)}</div>`;
+// GRUA07 es el UNICO recurso con un operador real detras (grua.html, un
+// humano que acepta y avanza el estado por ACC/ST). Los demas recursos
+// (sembrados por scripts/sembrar_recursos.py) son solo datos simulados: si
+// se despachan, nadie responde y quedan en DESPACHADA. Diferenciacion
+// LIGERA solo en la UI (un badge), no en el protocolo: el frame HB/POS es
+// identico al de un nodo real, para el sistema son indistinguibles.
+const RECURSOS_CON_OPERADOR = new Set(["GRUA07"]);
+const esRecursoSimulado = (node) => !RECURSOS_CON_OPERADOR.has(node);
+const simuladoBadge = (node) => esRecursoSimulado(node) ? ` <span class="badge" title="Datos sembrados para el demo, sin operador real detrás">Simulado</span>` : "";
 // 2 perfiles distintos en 2 apps distintas. Cada chip lleva su propia etiqueta
 // ("Operador de grúa" / "Operador de centro") para que el tipo nunca sea
 // ambiguo, sin importar en qué sección de la pantalla aparezca:
@@ -745,7 +754,7 @@ async function openRequest(id) {
     document.querySelector("#drawer-content").innerHTML = `
       <section class="detail-section"><h3>Solicitud #${request.id}</h3><dl class="key-values"><dt>Categoría</dt><dd>${escapeHtml(request.category)}</dd><dt>Estado</dt><dd>${stateBadge(request.state)}</dd><dt>Responsable</dt><dd>${assignedTag(RESPONSABLE_GRUA)}</dd><dt>Origen</dt><dd class="mono">${escapeHtml(request.node)} / ${request.seq}</dd><dt>Lugar</dt><dd>${escapeHtml(request.place || "Sin lugar")}</dd><dt>GPS</dt><dd>${validCoordinate(request.lat, request.lon) ? `<span class="mono">${escapeHtml(request.lat)}, ${escapeHtml(request.lon)}</span> · <a href="#overview" class="link">Ver en el mapa</a>` : "Sin GPS"}</dd><dt>Detalle</dt><dd>${escapeHtml(request.detail || "Sin detalle")}</dd><dt>Radio</dt><dd class="mono">RSSI ${escapeHtml(request.rssi || "—")} · SNR ${escapeHtml(request.snr || "—")}</dd></dl></section>
       <section class="detail-section"><h3>Triage explicable</h3><div class="review"><div class="list-line">${priorityBadge(triage.priority)} <span class="muted">Reportada: ${request.priority}</span></div><p>${triage.reasons.map(escapeHtml).join(" · ")}</p>${triage.alerts.length ? `<p class="badge warning">${triage.alerts.map(escapeHtml).join(" · ")}</p>` : ""}</div></section>
-      <section class="detail-section"><h3>Candidatos</h3>${triage.candidates.length ? `<div class="list">${triage.candidates.map((item) => `<div class="list-item"><strong class="mono">${escapeHtml(item.node)}</strong><div class="cell-sub">${item.distance_km == null ? "Distancia desconocida (sin GPS reciente)" : `${item.distance_km} km`} · disponible · contacto hace ${item.last_seen_seconds} s</div></div>`).join("")}</div>` : empty("Sin candidatos elegibles")}</section>
+      <section class="detail-section"><h3>Candidatos</h3>${triage.candidates.length ? `<div class="list">${triage.candidates.map((item) => `<div class="list-item"><strong class="mono">${escapeHtml(item.node)}</strong>${simuladoBadge(item.node)}<div class="cell-sub">${item.distance_km == null ? "Distancia desconocida (sin GPS reciente)" : `${item.distance_km} km`} · disponible · contacto hace ${item.last_seen_seconds} s</div></div>`).join("")}</div>` : empty("Sin candidatos elegibles")}</section>
       ${canDispatch ? dispatchForm(request, triage.candidates, triage.recommended_resource.node) : ""}
       ${humanActions(request)}
       <section class="detail-section"><h3>Timeline auditable</h3>${timeline.items.length ? `<div class="timeline">${timeline.items.map((item) => `<div class="timeline-item"><strong>${escapeHtml(item.event_type)}</strong><div>${escapeHtml(item.from_state || "Inicio")} → ${escapeHtml(item.to_state || "Sin cambio")}</div><div class="cell-sub">${escapeHtml(item.actor || "sistema")} · ${escapeHtml(item.reason || "Sin motivo")} · ${formatDate(item.created_at)}</div></div>`).join("")}</div>` : empty("Sin eventos")}</section>`;
@@ -763,7 +772,8 @@ function dispatchForm(request, candidates, suggested) {
   const options = candidates.map((c) => {
     const dist = c.distance_km == null ? "disponible · distancia desconocida" : `${c.distance_km} km`;
     const selected = c.node === suggested ? " selected" : "";
-    return `<option value="${escapeHtml(c.node)}"${selected}>${escapeHtml(c.node)} · ${escapeHtml(dist)}</option>`;
+    const sufijo = esRecursoSimulado(c.node) ? " · simulado" : "";
+    return `<option value="${escapeHtml(c.node)}"${selected}>${escapeHtml(c.node)} · ${escapeHtml(dist)}${sufijo}</option>`;
   }).join("");
   return `<section class="detail-section"><h3>Solicitar grúa</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">Grúa disponible y compatible</label><select id="resource-node" name="resource_node" required>${options}</select></div>${operadorTag("Operador de grúa", RESPONSABLE_GRUA, "Conductor asignado · GRUA07")}<div class="field"><label for="dispatch-reason">Motivo</label><textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Solicitar a la grúa</button></div></form></section>`;
 }
@@ -810,7 +820,7 @@ async function renderResources() {
 }
 function resourcesTable(items) {
   if (!items.length) return empty("No hay recursos con estos filtros");
-  return `<div class="table-wrap"><table><thead><tr><th>Nodo / tipo</th><th>Estado</th><th>Zona</th><th>Heartbeat</th><th>Posición</th><th>Radio</th></tr></thead><tbody>${items.map((item) => `<tr><td><div class="cell-main mono">${escapeHtml(item.node)}</div><div class="cell-sub">${escapeHtml(item.kind)}</div></td><td>${stateBadge(item.state)}</td><td>${escapeHtml(item.zone)}</td><td>${ago(item.last_seen)}</td><td>${item.position_seen_at ? `${ago(item.position_seen_at)}<div class="cell-sub mono">${escapeHtml(item.lat)}, ${escapeHtml(item.lon)} · ±${escapeHtml(item.accuracy || "—")} m</div>` : "Sin posición"}</td><td class="mono">RSSI ${escapeHtml(item.rssi || "—")}<br>SNR ${escapeHtml(item.snr || "—")}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Nodo / tipo</th><th>Estado</th><th>Zona</th><th>Heartbeat</th><th>Posición</th><th>Radio</th></tr></thead><tbody>${items.map((item) => `<tr><td><div class="cell-main mono">${escapeHtml(item.node)}${simuladoBadge(item.node)}</div><div class="cell-sub">${escapeHtml(item.kind)}</div></td><td>${stateBadge(item.state)}</td><td>${escapeHtml(item.zone)}</td><td>${ago(item.last_seen)}</td><td>${item.position_seen_at ? `${ago(item.position_seen_at)}<div class="cell-sub mono">${escapeHtml(item.lat)}, ${escapeHtml(item.lon)} · ±${escapeHtml(item.accuracy || "—")} m</div>` : "Sin posición"}</td><td class="mono">RSSI ${escapeHtml(item.rssi || "—")}<br>SNR ${escapeHtml(item.snr || "—")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 async function renderNetwork() {
