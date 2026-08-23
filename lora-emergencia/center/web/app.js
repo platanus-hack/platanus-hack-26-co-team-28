@@ -64,13 +64,17 @@ const empty = (message) => `<div class="empty">${escapeHtml(message)}</div>`;
 // Responsable de grúa interno por defecto. Cada solicitud que llega queda con un
 // asignado automatico (tag) y el campo Operador de los formularios viene
 // pre-lleno con este nombre. El operador lo puede cambiar antes de confirmar.
+// Responsable de grua interno (tag "Asignado" en la solicitud) y operador de
+// turno (chip en los formularios). Son personas distintas: el responsable recibe
+// la asignacion; el operador ejecuta la accion en el puesto de mando.
 const RESPONSABLE_GRUA = "Manuel Vargas";
+const OPERADOR = "Juan Ortega";
 const assignedTag = (name) => `<span class="badge success">Asignado: ${escapeHtml(name)}</span>`;
 const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 // Chip de un usuario ya guardado (no un input de texto libre). Se ve como un tag
 // con avatar de iniciales y rol; queda pre-seteado. Un input oculto envia el
 // valor como "actor" para que el submit (FormData) siga funcionando igual.
-const operadorTag = (name) => `<div class="field"><label>Operador</label><div class="user-tag"><span class="user-tag-avatar">${escapeHtml(initials(name))}</span><span class="user-tag-body"><span class="user-tag-name">${escapeHtml(name)}</span><span class="user-tag-role">Responsable de grúa · asignado</span></span><input type="hidden" name="actor" value="${escapeHtml(name)}"></div></div>`;
+const operadorTag = (name) => `<div class="field"><label>Operador</label><div class="user-tag"><span class="user-tag-avatar">${escapeHtml(initials(name))}</span><span class="user-tag-body"><span class="user-tag-name">${escapeHtml(name)}</span><span class="user-tag-role">Operador de turno · puesto de mando</span></span><input type="hidden" name="actor" value="${escapeHtml(name)}"></div></div>`;
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -756,7 +760,7 @@ function dispatchForm(request, candidates, suggested) {
     const selected = c.node === suggested ? " selected" : "";
     return `<option value="${escapeHtml(c.node)}"${selected}>${escapeHtml(c.node)} · ${escapeHtml(dist)}</option>`;
   }).join("");
-  return `<section class="detail-section"><h3>Solicitar grúa</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">Grúa disponible y compatible</label><select id="resource-node" name="resource_node" required>${options}</select></div>${operadorTag(RESPONSABLE_GRUA)}<div class="field"><label for="dispatch-reason">Motivo</label><textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Solicitar a la grúa</button></div></form></section>`;
+  return `<section class="detail-section"><h3>Solicitar grúa</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">Grúa disponible y compatible</label><select id="resource-node" name="resource_node" required>${options}</select></div>${operadorTag(OPERADOR)}<div class="field"><label for="dispatch-reason">Motivo</label><textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Solicitar a la grúa</button></div></form></section>`;
 }
 function humanActions(request) {
   const actions = [];
@@ -765,7 +769,7 @@ function humanActions(request) {
   if (["PENDIENTE", "EN_REVISION"].includes(request.state) && !request.resource_node) actions.push(["cancel", "Cancelar"]);
   if (["ACEPTADA", "EN_CURSO"].includes(request.state)) actions.push(["resolve", "Resolver"]);
   if (!actions.length) return "";
-  return `<section class="detail-section"><h3>Acción humana</h3><form id="action-form" data-request-id="${request.id}" class="review"><div class="field"><label for="action">Acción</label><select id="action" name="action">${actions.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div>${operadorTag(RESPONSABLE_GRUA)}<div class="field"><label for="action-reason">Motivo obligatorio</label><textarea id="action-reason" name="reason" required minlength="3" maxlength="240"></textarea></div><div class="form-actions"><button class="button" type="submit">Registrar acción</button></div></form></section>`;
+  return `<section class="detail-section"><h3>Acción humana</h3><form id="action-form" data-request-id="${request.id}" class="review"><div class="field"><label for="action">Acción</label><select id="action" name="action">${actions.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div>${operadorTag(OPERADOR)}<div class="field"><label for="action-reason">Motivo obligatorio</label><textarea id="action-reason" name="reason" required minlength="3" maxlength="240"></textarea></div><div class="form-actions"><button class="button" type="submit">Registrar acción</button></div></form></section>`;
 }
 async function submitDispatch(event) {
   event.preventDefault();
