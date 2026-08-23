@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from api import ApiError, CommandApi
-from command_core import CenterStore, RadioFrame
+from command_core import TERMINAL_STATES, CenterStore, RadioFrame
 from offline_map import MapManager, get_tile
 from triage import triage_requests
 
@@ -524,10 +524,20 @@ def validate_network_config(host, api_token):
         raise ValueError("--api-token es obligatorio al usar un host no loopback")
 
 
+# Cuanto se sigue reenviando el estado de una solicitud ya cerrada.
+CLOSED_REBROADCAST_SECONDS = 10 * 60
+
+
 def status_rebroadcast_loop(interval=15):
-    # Reenvia periodicamente el estado de las solicitudes activas al rescatista.
-    # Los avisos ST son best-effort por radio; si uno se pierde, este latido lo
-    # recupera en <= interval segundos (el portal consulta /status cada 4 s).
+    # Reenvia periodicamente el estado al rescatista. Los avisos ST son
+    # best-effort por radio; si uno se pierde, este latido lo recupera en
+    # <= interval segundos (el portal consulta /status cada 4 s).
+    #
+    # Incluye las solicitudes CERRADAS hace poco. RESUELTA y CANCELADA son
+    # justo los avisos que mas le importan al ciudadano ("te atendieron",
+    # "se cancelo") y eran los UNICOS sin reintento: salian una sola vez y,
+    # si esa rafaga se perdia, el telefono se quedaba para siempre en
+    # "Ayuda en camino" aunque el centro ya diera el caso por cerrado.
     while True:
         time.sleep(interval)
         try:
@@ -535,6 +545,12 @@ def status_rebroadcast_loop(interval=15):
                 continue
             for request in STORE.list_requests(open_only=True, limit=20):
                 API._notify_citizen(request)
+            now = time.time()
+            for request in STORE.list_requests(limit=40):
+                if request["state"] not in TERMINAL_STATES:
+                    continue
+                if now - (request["updated_at"] or 0) <= CLOSED_REBROADCAST_SECONDS:
+                    API._notify_citizen(request)
         except Exception:
             pass
 

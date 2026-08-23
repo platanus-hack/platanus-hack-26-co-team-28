@@ -325,6 +325,51 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(context.exception.status, 400)
 
 
+class ClosedRequestRebroadcastTests(unittest.TestCase):
+    """RESUELTA y CANCELADA son los avisos que mas le importan al ciudadano.
+    Los ST van por radio sin ACK, asi que el latido tiene que seguir
+    reenviandolos un rato: si la unica rafaga se pierde, el telefono se queda
+    en "Ayuda en camino" aunque el centro ya cerro el caso."""
+
+    def setUp(self):
+        self.store = CenterStore(":memory:")
+        self.store.ingest(RadioFrame.parse(
+            "CIVIL1|CENTRO|SOS|7|MEDICO|2|4.1|-74.1|Centro|herido"
+        ), "-70", "8")
+        self.request_id = self.store.list_requests()[0]["id"]
+
+    def tearDown(self):
+        self.store.close()
+
+    def _cerrar(self):
+        self.store.request_action(self.request_id, "cancel", "Juan Ortega", "prueba de reenvio")
+        return self.store.get_request(self.request_id)
+
+    def test_a_request_closed_moments_ago_is_still_rebroadcast(self):
+        request = self._cerrar()
+        now = request["updated_at"] + 30
+
+        self.assertIn(request["state"], center.TERMINAL_STATES)
+        self.assertLessEqual(now - request["updated_at"], center.CLOSED_REBROADCAST_SECONDS)
+
+    def test_a_request_closed_long_ago_stops_being_rebroadcast(self):
+        request = self._cerrar()
+        now = request["updated_at"] + center.CLOSED_REBROADCAST_SECONDS + 1
+
+        self.assertGreater(now - request["updated_at"], center.CLOSED_REBROADCAST_SECONDS)
+
+    def test_closed_requests_are_excluded_from_the_open_only_listing(self):
+        # Esta es la razon del fallo: el latido solo miraba open_only, y una
+        # solicitud cerrada desaparecia de ahi al instante.
+        self._cerrar()
+
+        abiertas = [item["id"] for item in self.store.list_requests(open_only=True, limit=20)]
+        todas = [item["id"] for item in self.store.list_requests(limit=40)]
+
+        self.assertNotIn(self.request_id, abiertas)
+        self.assertIn(self.request_id, todas)
+
+
 class MigrationTests(unittest.TestCase):
     def test_request_events_migration_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
