@@ -66,7 +66,8 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 .here .pl{font-size:14px;font-weight:600;line-height:1.25}
 .here .co{font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);margin-top:2px}
 .here .tag{margin-left:auto;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
-input.text{width:100%;padding:14px;font-size:16px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);margin-top:8px}
+input.text,textarea.text{width:100%;padding:14px;font-size:16px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);margin-top:8px;font-family:inherit;resize:vertical}
+.counter{text-align:right;font-size:12px;color:var(--muted);margin-top:4px}
 .confirm-ill{width:88px;height:88px;border-radius:50%;display:grid;place-items:center;margin:12px auto 18px;border:2.5px solid}
 .confirm-ill.danger{background:color-mix(in srgb,var(--danger) 14%,transparent);border-color:var(--danger)}.confirm-ill.danger svg{color:var(--danger);width:44px;height:44px}
 .confirm-ill.safe{background:color-mix(in srgb,var(--safe) 16%,transparent);border-color:var(--safe)}.confirm-ill.safe svg{color:var(--safe);width:44px;height:44px}
@@ -131,6 +132,8 @@ input.text{width:100%;padding:14px;font-size:16px;border:1.5px solid var(--borde
     <div id="subwrap" style="display:none">
       <div class="label">Detalle (opcional)</div>
       <div class="chips" id="subs"></div>
+      <textarea class="text" id="msg" rows="2" maxlength="100" placeholder="Escribe un mensaje para el puesto de mando (opcional)"></textarea>
+      <div class="counter"><span id="msgcount">0</span>/100</div>
     </div>
     <div class="label">Tu ubicación</div>
     <div class="here wait" id="here">
@@ -150,7 +153,7 @@ input.text{width:100%;padding:14px;font-size:16px;border:1.5px solid var(--borde
     <div class="title" style="text-align:center">Pedimos ayuda por ti</div>
     <div class="sub" style="text-align:center">Esto fue lo que enviamos por radio:</div>
     <div class="recap" id="recap"></div>
-    <div class="tl">
+    <div class="tl" id="tl">
       <div class="tl-step done"><div class="rail"><div class="node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></div><div class="line"></div></div><div><div class="t">Tu pedido salió</div><div class="d" id="tl-time">recibido en el puesto de mando</div></div></div>
       <div class="tl-step now"><div class="rail"><div class="node"></div><div class="line"></div></div><div><div class="t">Esperando asignación</div><div class="d">El mando busca al equipo más cercano</div></div></div>
       <div class="tl-step pending"><div class="rail"><div class="node"></div><div class="line"></div></div><div><div class="t">En camino</div><div class="d">Aún no</div></div></div>
@@ -209,6 +212,7 @@ function go(v){
   document.querySelectorAll('.view').forEach(function(e){e.classList.toggle('on', e.dataset.view===v)});
   if(v==='pedir'){ pedirGps('here'); revisarListo(); }
   if(v==='salvo'){ pedirGps('here2'); }
+  if(v!=='enviado'){ pararSeguimiento(); }
   window.scrollTo(0,0);
 }
 
@@ -260,12 +264,15 @@ function mostrarSubs(cat){
   box.innerHTML=list.map(function(s){return '<button type="button" class="chip" data-sub="'+esc(s)+'">'+esc(s)+'</button>'}).join('');
   wrap.style.display = list.length ? 'block' : 'none';
 }
+// Tocar una subcategoria la escribe en el mensaje (relleno rapido). El usuario
+// puede editarla o escribir su propio mensaje. El mensaje es el "detalle" del SOS.
 document.getElementById('subs').addEventListener('click', function(e){
   var b=e.target.closest('.chip'); if(!b) return;
-  var v=b.dataset.sub, was=b.classList.contains('sel');
-  document.querySelectorAll('#subs .chip').forEach(function(x){x.classList.remove('sel')});
-  if(!was){ b.classList.add('sel'); S.sub=v; } else { S.sub=''; }
+  document.querySelectorAll('#subs .chip').forEach(function(x){x.classList.toggle('sel', x===b)});
+  var msg=document.getElementById('msg'); msg.value=b.dataset.sub; actualizarContador();
 });
+function actualizarContador(){ document.getElementById('msgcount').textContent=document.getElementById('msg').value.length; }
+document.getElementById('msg').addEventListener('input', actualizarContador);
 document.getElementById('lugar').addEventListener('input', revisarListo);
 
 // Habilita "Pedir ayuda" solo con categoria + (GPS o lugar escrito).
@@ -276,21 +283,65 @@ function revisarListo(){
 
 async function enviar(){
   var lugar=document.getElementById('lugar').value.trim();
+  var detalle=document.getElementById('msg').value.trim();
   // Frame del protocolo: SOS con cat|pri|lat|lon|lugar|detalle. El ciudadano NO
-  // manda severidad (pri vacio): el centro la asigna con triage. detalle lleva la
-  // subcategoria opcional para ayudar a ese triage.
+  // manda severidad (pri vacio): el centro la asigna con triage. detalle lleva el
+  // mensaje personalizado (o la subcategoria) para ayudar a ese triage.
   var body='accion=sos&cat='+S.cat+'&pri=&lat='+S.lat+'&lon='+S.lon+
-           '&lugar='+encodeURIComponent(lugar)+'&detalle='+encodeURIComponent(S.sub);
+           '&lugar='+encodeURIComponent(lugar)+'&detalle='+encodeURIComponent(detalle);
   await postReporte(body);
   // Recap con feedback claro de lo enviado.
   var ubic = (S.lat && S.lon) ? (S.lat+', '+S.lon+' (GPS ±'+S.acc+' m)') : lugar;
   document.getElementById('recap').innerHTML =
     fila('Situación', CATNOMBRE[S.cat]) +
-    (S.sub ? fila('Detalle', S.sub) : '') +
+    (detalle ? fila('Mensaje', detalle) : '') +
     filaMono('Ubicación', ubic);
-  document.getElementById('tl-time').textContent = hora()+' · recibido en el puesto de mando';
+  horaEnvio = hora();
+  iniciarSeguimiento();
   go('enviado');
 }
+
+// ----- Seguimiento en vivo del estado (loop bidireccional) -----
+// El portal consulta /status en el rescatista. El centro le manda el estado por
+// LoRa cuando el operador prioriza, la grua acepta, va en ruta o resuelve.
+var seguimiento=null, horaEnvio='';
+var PASOS=[
+  {t:'Tu pedido salió', d:'recibido en el puesto de mando'},
+  {t:'Asignando equipo', d:'el mando busca al más cercano'},
+  {t:'En camino', d:'el equipo va hacia ti'},
+  {t:'Te atendieron', d:'caso resuelto'}
+];
+function nivelDeEstado(est){
+  est=(est||'').toUpperCase();
+  if(est==='RESUELTA') return 4;
+  if(est==='EN_CURSO'||est==='ENLUGAR') return 3;
+  if(est==='DESPACHADA'||est==='ACEPTADA') return 2;
+  return 1; // PENDIENTE / EN_REVISION / sin dato
+}
+function renderTimeline(nivel){
+  var tl=document.getElementById('tl'); if(!tl) return;
+  var html='';
+  for(var i=0;i<PASOS.length;i++){
+    var cls = i < nivel-1 ? 'done' : (i===nivel-1 ? 'now' : 'pending');
+    var check = cls==='done' ? "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3'><path d='M20 6 9 17l-5-5'/></svg>" : '';
+    var line = i<PASOS.length-1 ? "<div class='line'></div>" : '';
+    var d = (cls==='pending') ? 'Aún no' : (i===0 ? (horaEnvio+' · '+PASOS[0].d) : PASOS[i].d);
+    html += "<div class='tl-step "+cls+"'><div class='rail'><div class='node'>"+check+"</div>"+line+"</div><div><div class='t'>"+esc(PASOS[i].t)+"</div><div class='d'>"+esc(d)+"</div></div></div>";
+  }
+  tl.innerHTML=html;
+}
+function iniciarSeguimiento(){
+  renderTimeline(1);
+  if(seguimiento) clearInterval(seguimiento);
+  var poll=function(){
+    fetch('/status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(s){
+      renderTimeline(nivelDeEstado(s.estado));
+    }).catch(function(){});
+  };
+  poll();
+  seguimiento=setInterval(poll,4000);
+}
+function pararSeguimiento(){ if(seguimiento){ clearInterval(seguimiento); seguimiento=null; } }
 async function enviarSalvo(){
   var n=document.getElementById('s-nombre').value.trim(), d=document.getElementById('s-doc').value.trim();
   if(!n||!d){ alert('Escribe tu nombre y documento.'); return; }

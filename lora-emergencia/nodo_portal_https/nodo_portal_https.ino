@@ -65,6 +65,19 @@ String NODE_LAT = "4.6767";
 String NODE_LON = "-74.0483";
 int seq = 0;
 
+// ---- Loop bidireccional: recibir el estado que manda el centro ----
+// El radio lo maneja SOLO loop() (un unico dueno) para no chocar con el envio.
+// El task del servidor HTTPS ENCOLA el envio; loop() lo ejecuta y ademas escucha.
+volatile bool rxFlag = false;             // la ISR marca que llego un paquete
+void IRAM_ATTR onRx() { rxFlag = true; }
+SemaphoreHandle_t txMtx = NULL;           // protege la cola de un solo envio
+volatile bool txPend = false;             // hay un frame por enviar
+volatile bool txDone = false;             // loop ya lo envio
+volatile bool txOk = false;               // resultado del envio
+String txMsg; int txId = 0;
+char estadoBuf[24] = "-";                 // ultimo estado recibido del centro
+unsigned long estadoAt = 0;               // millis del ultimo estado recibido
+
 // ---------- utilidades ----------
 String urldecode(String s) {
   String o; char c; int i;
@@ -101,22 +114,28 @@ String tok(const String& s, int idx) {
   return "";
 }
 
-// Envio con CAD (listen-before-talk): escucha el canal antes de transmitir para
-// reducir colisiones cuando hay muchos usuarios. Estandar de LoRa.
-void enviarCAD(String msg) {
-  for (int i = 0; i < 6; i++) {
-    if (radio.scanChannel() == RADIOLIB_CHANNEL_FREE) break;
-    delay(random(20, 90));
+// Procesa un frame entrante. Nos interesa el estado que manda el centro:
+// CENTRO|<NODE_ID>|ST|<id>|<estado>. Lo guardamos y lo mostramos en el OLED.
+void procesarEntrante(const String& msg) {
+  if (tok(msg, 1) == NODE_ID && tok(msg, 2) == "ST") {
+    String est = tok(msg, 4);
+    est.toCharArray(estadoBuf, sizeof(estadoBuf));
+    estadoAt = millis();
+    Serial.println("[NODO] estado del centro: " + est);
+    oledMostrar("ACTUALIZACION", est, "puesto de mando");
   }
-  radio.transmit(msg);
 }
 
-// Limpia un texto para que no rompa el formato '|' y no sea muy largo
-String san(String s) {
+// Limpia un texto para que no rompa el formato '|' y lo corta a n caracteres.
+// Presupuesto LoRa: un frame SOS con detalle=100 + lugar=40 queda en ~180 bytes,
+// dentro del maximo de ~255 bytes de un paquete SX1276. Mas largo = mas tiempo
+// en el aire y mas riesgo de colision, por eso se limita.
+String sanN(String s, int n) {
   s.replace("|", " "); s.replace("\n", " "); s.replace("\r", " ");
-  if (s.length() > 50) s = s.substring(0, 50);
+  if ((int)s.length() > n) s = s.substring(0, n);
   return s;
 }
+String san(String s) { return sanN(s, 50); }
 
 // Prioridad por defecto segun la categoria (0 = vida en riesgo)
 String priDefault(String cat) {
@@ -125,21 +144,33 @@ String priDefault(String cat) {
   return "3";
 }
 
-// Envio confiable de un frame ya armado: CAD + 3 reintentos + espera de ACK dirigido.
-bool enviarFrame(String msg, int id) {
+// Envio real del radio. SOLO se llama desde loop() (dueno unico del radio).
+// CAD (listen-before-talk) + hasta 3 reintentos + espera de ACK dirigido. La
+// espera del ACK usa la bandera de RX; si mientras tanto llega un estado del
+// centro, lo procesa igual.
+bool enviarConAck(String msg, int id) {
   bool acked = false;
   int intento = 0;
   while (!acked && intento < 3) {
     Serial.println("[NODO] TX (intento " + String(intento + 1) + "): " + msg);
-    enviarCAD(msg);
+    for (int i = 0; i < 6; i++) { if (radio.scanChannel() == RADIOLIB_CHANNEL_FREE) break; delay(random(20, 90)); }
+    radio.standby();
+    radio.transmit(msg);
+    rxFlag = false;
+    radio.startReceive();
     unsigned long t0 = millis();
     while (millis() - t0 < 1000 && !acked) {
-      String ack; int st = radio.receive(ack);
-      // ACK dirigido: CENTRO|<mi_id>|ACK|<msgid>
-      if (st == RADIOLIB_ERR_NONE &&
-          tok(ack, 1) == NODE_ID && tok(ack, 2) == "ACK" && tok(ack, 3) == String(id)) {
-        acked = true;
+      if (rxFlag) {
+        rxFlag = false;
+        String in;
+        if (radio.readData(in) == RADIOLIB_ERR_NONE) {
+          // ACK dirigido: CENTRO|<mi_id>|ACK|<msgid>
+          if (tok(in, 1) == NODE_ID && tok(in, 2) == "ACK" && tok(in, 3) == String(id)) acked = true;
+          else procesarEntrante(in);   // pudo llegar un estado mientras esperabamos el ACK
+        }
+        radio.startReceive();
       }
+      delay(2);
     }
     if (!acked) { intento++; delay(random(100, 500)); }
   }
@@ -148,12 +179,24 @@ bool enviarFrame(String msg, int id) {
   oledMostrar(acked ? "ENVIADO OK" : "REENVIANDO...",
               "id " + String(id) + (acked ? "  confirmado" : "  sin ACK"),
               "reportes: " + String(enviados));
+  radio.startReceive();                 // vuelve a escuchar al centro
   return acked;
+}
+
+// Llamado desde el task del servidor HTTPS. Encola el envio y espera a que
+// loop() (dueno del radio) lo ejecute. Asi dos tasks nunca tocan el radio a la vez.
+bool enviarFrame(String msg, int id) {
+  xSemaphoreTake(txMtx, portMAX_DELAY);
+  txMsg = msg; txId = id; txOk = false; txDone = false; txPend = true;
+  xSemaphoreGive(txMtx);
+  unsigned long t0 = millis();
+  while (!txDone && millis() - t0 < 8000) delay(10);
+  return txOk;
 }
 
 // SOS: pedir ayuda. Frame: ORIGEN|CENTRO|SOS|MSGID|cat|pri|lat|lon|lugar|detalle
 bool enviarSOS(String cat, String pri, String lat, String lon, String lugar, String detalle) {
-  lugar = san(lugar); detalle = san(detalle);
+  lugar = sanN(lugar, 40); detalle = sanN(detalle, 100);
   if (pri.length() == 0) pri = priDefault(cat);
   if (lugar.length() == 0) lugar = "-";
   if (detalle.length() == 0) detalle = "-";
@@ -286,6 +329,17 @@ static esp_err_t hReportApi(httpd_req_t* req) {
   httpd_resp_sendstr(req, ok ? "OK" : "PENDING");
   return ESP_OK;
 }
+// HTTPS/HTTP: estado actual de la solicitud del rescatista. Lo actualiza el centro
+// por LoRa (frame ST). El portal lo consulta para mostrar el timeline en vivo.
+static esp_err_t hStatus(httpd_req_t* req) {
+  unsigned long hace = estadoAt ? (millis() - estadoAt) / 1000UL : 0;
+  char json[96];
+  snprintf(json, sizeof(json), "{\"estado\":\"%s\",\"hace\":%lu}", estadoBuf, hace);
+  httpd_resp_set_type(req, "application/json; charset=utf-8");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+  httpd_resp_sendstr(req, json);
+  return ESP_OK;
+}
 // HTTP (respaldo sin GPS): recibe el POST del formulario y manda un SOS por categoria
 static esp_err_t hReportForm(httpd_req_t* req) {
   String body = readBody(req);
@@ -351,6 +405,10 @@ void setup() {
   Serial.print("[NODO] LoRa... ");
   int e = radio.begin(915.0, 125.0, 7, 5, 0x12, 20, 8);
   Serial.println(e == RADIOLIB_ERR_NONE ? "OK" : "FALLO");
+  // El rescatista tambien ESCUCHA: el centro le manda el estado de su solicitud.
+  txMtx = xSemaphoreCreateMutex();
+  radio.setPacketReceivedAction(onRx);
+  radio.startReceive();
 
   // Eventos WiFi: confirman si el celular se asocia y si el DHCP le asigna IP.
   WiFi.onEvent([](WiFiEvent_t ev, WiFiEventInfo_t info) {
@@ -387,6 +445,9 @@ void setup() {
   if (se == ESP_OK) {
     httpd_uri_t u_report = {}; u_report.uri = "/report"; u_report.method = HTTP_POST; u_report.handler = hReportApi;
     httpd_register_uri_handler(shandle, &u_report);
+    // /status ANTES del comodin /* para que no lo capture el handler de la pagina.
+    httpd_uri_t u_status = {}; u_status.uri = "/status"; u_status.method = HTTP_GET; u_status.handler = hStatus;
+    httpd_register_uri_handler(shandle, &u_status);
     httpd_uri_t u_geo = {}; u_geo.uri = "/*"; u_geo.method = HTTP_GET; u_geo.handler = hGeo;
     httpd_register_uri_handler(shandle, &u_geo);
     Serial.println("OK");
@@ -406,6 +467,8 @@ void setup() {
   if (httpd_start(&hhandle, &hconf) == ESP_OK) {
     httpd_uri_t u_rep = {}; u_rep.uri = "/report"; u_rep.method = HTTP_POST; u_rep.handler = hReportForm;
     httpd_register_uri_handler(hhandle, &u_rep);
+    httpd_uri_t u_hstatus = {}; u_hstatus.uri = "/status"; u_hstatus.method = HTTP_GET; u_hstatus.handler = hStatus;
+    httpd_register_uri_handler(hhandle, &u_hstatus);
     httpd_uri_t u_http = {}; u_http.uri = "/*"; u_http.method = HTTP_GET; u_http.handler = hHttp;
     httpd_register_uri_handler(hhandle, &u_http);
   }
@@ -419,6 +482,23 @@ void setup() {
 unsigned long lastDiag = 0;
 void loop() {
   dnsServer.processNextRequest();
+
+  // 1. Si el servidor HTTPS encolo un envio, loop() lo ejecuta (dueno del radio).
+  if (txPend) {
+    xSemaphoreTake(txMtx, portMAX_DELAY);
+    String msg = txMsg; int id = txId; txPend = false;
+    xSemaphoreGive(txMtx);
+    txOk = enviarConAck(msg, id);
+    txDone = true;
+  }
+  // 2. Llego un frame del centro con el estado de mi solicitud.
+  if (rxFlag) {
+    rxFlag = false;
+    String in;
+    if (radio.readData(in) == RADIOLIB_ERR_NONE) procesarEntrante(in);
+    radio.startReceive();
+  }
+
   // Diagnostico de heap: si baja mucho, el handshake TLS resetea la conexion.
   if (millis() - lastDiag > 3000) {
     lastDiag = millis();
