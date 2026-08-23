@@ -322,9 +322,16 @@ void setup() {
   int e = radio.begin(915.0, 125.0, 7, 5, 0x12, 20, 8);
   Serial.println(e == RADIOLIB_ERR_NONE ? "OK" : "FALLO");
 
+  // Eventos WiFi: confirman si el celular se asocia y si el DHCP le asigna IP.
+  WiFi.onEvent([](WiFiEvent_t ev, WiFiEventInfo_t info) {
+    if (ev == ARDUINO_EVENT_WIFI_AP_STACONNECTED)    Serial.println("[WIFI] cliente asociado");
+    if (ev == ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED)   Serial.println("[WIFI] IP asignada al cliente (DHCP OK)");
+    if (ev == ARDUINO_EVENT_WIFI_AP_STADISCONNECTED) Serial.println("[WIFI] cliente desconectado");
+  });
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
-  WiFi.softAP(AP_SSID, NULL, 1, 0, 4);
+  // max 8 clientes (evita que leases fantasma por MAC aleatoria bloqueen el DHCP)
+  WiFi.softAP(AP_SSID, NULL, 1, 0, 8);
   Serial.print("[NODO] SoftAP '"); Serial.print(AP_SSID);
   Serial.print("' en "); Serial.println(WiFi.softAPIP());
   dnsServer.start(53, "*", apIP);
@@ -339,6 +346,11 @@ void setup() {
   sconf.httpd.max_uri_handlers = 8;
   sconf.httpd.stack_size = 10240;
   sconf.httpd.ctrl_port = 32768;        // puerto de control del server HTTPS
+  // RAM: el handshake TLS necesita ~40 KB contiguos. Chrome/Safari abren varias
+  // conexiones a la vez y agotan el heap -> connection reset. Limitamos los sockets
+  // y purgamos el mas viejo cuando se llena (en vez de rechazar la conexion).
+  sconf.httpd.max_open_sockets = 2;
+  sconf.httpd.lru_purge_enable = true;
   httpd_handle_t shandle = NULL;
   Serial.print("[NODO] HTTPS... ");
   esp_err_t se = httpd_ssl_start(&shandle, &sconf);
@@ -366,10 +378,20 @@ void setup() {
   }
 
   Serial.println("[NODO] Portal listo. https://ayuda.homiapp.xyz");
+  Serial.print("[DIAG] heap libre tras setup: "); Serial.print(ESP.getFreeHeap());
+  Serial.print("  bloque max contiguo: "); Serial.println(ESP.getMaxAllocHeap());
   oledMostrar("PUNTO AYUDA", "red: AYUDA...911", "esperando pedidos");
 }
 
+unsigned long lastDiag = 0;
 void loop() {
   dnsServer.processNextRequest();
+  // Diagnostico de heap: si baja mucho, el handshake TLS resetea la conexion.
+  if (millis() - lastDiag > 3000) {
+    lastDiag = millis();
+    Serial.print("[DIAG] heap="); Serial.print(ESP.getFreeHeap());
+    Serial.print(" maxblock="); Serial.print(ESP.getMaxAllocHeap());
+    Serial.print(" clientes="); Serial.println(WiFi.softAPgetStationNum());
+  }
   delay(5);
 }
