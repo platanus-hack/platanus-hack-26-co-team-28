@@ -242,6 +242,9 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
 
                   <div className={styles.helpRow}>
                     {step.documentation && <a href={step.documentation} target="_blank" rel="noreferrer">Ver fuente ↗</a>}
+                    {step.resources?.map((resource) => (
+                      <a className={styles.resourceLink} href={resource.href} key={resource.href} target="_blank" rel="noreferrer">{resource.label} ↗</a>
+                    ))}
                   </div>
 
                   {step.command && (
@@ -259,7 +262,7 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
                       <span aria-hidden="true">⌄</span>
                     </summary>
                     <div className={styles.promptMenu}>
-                      <div className={styles.promptIntro}><strong>Continúa con tu IA</strong><span>El prompt incluye los 7 pasos, comandos y documentación.</span></div>
+                      <div className={styles.promptIntro}><strong>Continúa con tu IA</strong><span>El prompt incluye los {guide.steps.length} pasos, comandos y documentación.</span></div>
                       {(Object.keys(AI_DESTINATIONS) as AiProvider[]).map((provider) => {
                         const destination = AI_DESTINATIONS[provider];
                         const activeCopy = copyTarget === provider;

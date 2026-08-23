@@ -15,7 +15,7 @@
 .progressTrack { height: 3px; margin-bottom: 12px; overflow: hidden; border-radius: 999px; background: var(--border); }
 .progressTrack span { display: block; height: 100%; border-radius: inherit; background: var(--blue); transition: width 180ms ease; }
 
-.stepper { margin-bottom: 12px; display: grid; grid-template-columns: repeat(7, minmax(72px, 1fr)); gap: 6px; overflow-x: auto; }
+.stepper { margin-bottom: 12px; display: grid; grid-template-columns: repeat(8, minmax(72px, 1fr)); gap: 6px; overflow-x: auto; }
 .stepper button { min-width: 90px; min-height: 46px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); background: var(--surface); cursor: pointer; display: flex; align-items: center; gap: 8px; text-align: left; }
 .stepper button:disabled { opacity: .42; cursor: not-allowed; }
 .stepper button span { width: 23px; height: 23px; flex: 0 0 23px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 50%; font: 11px var(--mono); }
@@ -51,6 +51,7 @@
 .helpRow { padding-top: 12px; display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--border); }
 .helpRow a, .manualButton { padding: 0; border: 0; color: var(--action-text); background: transparent; font: 600 12px var(--font-sans); cursor: pointer; text-decoration: none; }
 .helpRow a { color: var(--muted); }
+.helpRow .resourceLink { color: var(--text); }
 
 .technical { color: var(--muted); font-size: 12px; }
 .technical summary { cursor: pointer; font-weight: 600; }
@@ -114,7 +115,7 @@
   .pageHead { min-height: 50px; }
   .pageHead h2 { font-size: 22px; }
   .pageHead p { max-width: 29ch; font-size: 12px; }
-  .stepper { grid-template-columns: repeat(7, 50px); }
+  .stepper { grid-template-columns: repeat(8, 50px); }
   .stepper button { min-width: 50px; justify-content: center; padding: 7px; }
   .stepper button small { display: none; }
   .visual { min-height: 230px; padding: 12px; }

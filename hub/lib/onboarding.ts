@@ -1,4 +1,4 @@
-export type OnboardingStepId = "source" | "inventory" | "antenna" | "master" | "slave" | "local-wifi" | "verify";
+export type OnboardingStepId = "source" | "inventory" | "antenna" | "master" | "slave" | "local-wifi" | "verify" | "enclosures";
 
 export type OnboardingStep = {
   id: OnboardingStepId;
@@ -15,6 +15,7 @@ export type OnboardingStep = {
   command?: string;
   documentation?: string;
   documentationLabel?: string;
+  resources?: { label: string; href: string }[];
 };
 
 export type OnboardingGuide = {
@@ -168,6 +169,28 @@ export function resourceOnboarding(): OnboardingGuide {
         command: "bash lora-emergencia/scripts/probar_portal.sh",
         documentation: "https://github.com/platanus-hack/platanus-hack-26-co-team-28/blob/main/lora-emergencia/docs/PLAN-DEMO.md",
         documentationLabel: "Abrir checklist operacional",
+      },
+      {
+        id: "enclosures",
+        blocking: false,
+        eyebrow: "Montaje opcional",
+        title: "Protege el kit con piezas 3D",
+        instruction: "Explora las piezas imprimibles para ordenar el Centro y proteger el nodo de campo.",
+        image: "/onboarding/enclosures-assembled.jpg",
+        imageWidth: 1672,
+        imageHeight: 941,
+        imageAlt: "Visualización referencial del Centro WOKI y un nodo de campo ensamblados con piezas impresas en 3D",
+        facts: [
+          "Centro: marco, pies y bandejas para electrónica y energía",
+          "Nodo: bandeja impresa dentro de una caja comercial resistente",
+          "Valida medidas y ajustes físicos antes del uso real",
+        ],
+        action: "Finalizar preparación",
+        documentation: "https://github.com/platanus-hack/platanus-hack-26-co-team-28/tree/main/lora-emergencia/diseno-3d",
+        documentationLabel: "Abrir documentación de impresión",
+        resources: [
+          { label: "Abrir visor 3D", href: "https://woki-lora-enclosures.vercel.app" },
+        ],
       },
     ],
   };

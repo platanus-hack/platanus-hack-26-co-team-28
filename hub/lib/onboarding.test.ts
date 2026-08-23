@@ -6,7 +6,7 @@ describe("onboarding del nodo de recurso", () => {
   test("empieza obteniendo el repositorio antes de preparar el hardware", () => {
     const guide = resourceOnboarding();
 
-    expect(guide.steps).toHaveLength(7);
+    expect(guide.steps).toHaveLength(8);
     expect(guide.steps[0].id).toBe("source");
     expect(guide.steps[0].command).toContain("git clone");
     expect(guide.steps[0].documentation).toBe(
@@ -59,6 +59,18 @@ describe("onboarding del nodo de recurso", () => {
     expect(slave?.command).toBe("bash lora-emergencia/scripts/instalar_esclavo.sh");
     expect(master?.documentation).toContain("OPERAR-SINCRONIZACION.md");
     expect(slave?.documentation).toContain("lora-emergencia/center/CENTRO.md");
+  });
+
+  test("cierra con el montaje 3D opcional y su visor público", () => {
+    const enclosure = resourceOnboarding().steps.at(-1);
+
+    expect(enclosure?.id).toBe("enclosures");
+    expect(enclosure?.blocking).toBe(false);
+    expect(enclosure?.resources).toContainEqual({
+      label: "Abrir visor 3D",
+      href: "https://woki-lora-enclosures.vercel.app",
+    });
+    expect(enclosure?.facts).toContain("Valida medidas y ajustes físicos antes del uso real");
   });
 
   test("publica un prompt sin secretos para delegar la instalación a otra IA", async () => {

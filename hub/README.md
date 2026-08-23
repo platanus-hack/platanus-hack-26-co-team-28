@@ -25,7 +25,7 @@ Variables requeridas:
 - `POST /api/sync`: ingesta autenticada por Bearer y confirmación por `event_id`.
 - `GET /api/health`: indica si el runtime está configurado.
 - `/`: acceso referencial sin autenticación; redirige al onboarding.
-- `/setup`: onboarding visual; inicia en simulación, no modifica dispositivos y permite copiar la guía para ChatGPT o Claude.
+- `/setup`: onboarding visual de ocho pasos; inicia en simulación, enlaza el visor 3D, no modifica dispositivos y permite copiar la guía para ChatGPT o Claude.
 - `/command-center`: overview de la réplica online, con mapa y refresco cada 15 segundos.
 - `/command-center/requests`: cola sincronizada de solicitudes con filtros.
 - `/command-center/resources`: disponibilidad, señal y última conexión de los nodos.

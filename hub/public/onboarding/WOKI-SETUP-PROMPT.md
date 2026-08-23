@@ -90,6 +90,14 @@ Comprueba conmigo este recorrido real, sin simulaciones:
 5. Si el Centro tiene internet, los eventos se replican después al Hub online; si no tiene,
    quedan pendientes sin detener la operación local.
 
+## Montaje 3D opcional
+
+Después de verificar el flujo, presenta las piezas mecánicas disponibles en
+<https://woki-lora-enclosures.vercel.app>. El Centro incluye marco, pies y bandejas; el nodo de
+campo usa una bandeja impresa dentro de una caja comercial resistente. No afirmes que el montaje
+está certificado: pide validar medidas, tolerancias y temperatura contra el hardware físico antes
+de usarlo en campo.
+
 ## Fuentes que debes consultar antes de improvisar
 
 - `lora-emergencia/docs/HARDWARE.md`
@@ -98,5 +106,7 @@ Comprueba conmigo este recorrido real, sin simulaciones:
 - `lora-emergencia/center/CENTRO.md`
 - `lora-emergencia/docs/PROTOCOLO-MINIMO.md`
 - `docs/OPERAR-SINCRONIZACION.md`
+- `lora-emergencia/diseno-3d/README.md`
+- `lora-emergencia/diseno-3d/IMPRESION.md`
 
 Empieza preguntándome solamente qué sistema operativo uso y si ya descargué el repositorio.
