@@ -112,8 +112,8 @@ input.text,textarea.text{width:100%;padding:14px;font-size:16px;border:1.5px sol
     <div class="title">¿Necesitas ayuda?</div>
     <div class="sub">Toca el botón grande. Nada más.</div>
     <div class="spacer"></div>
-    <button class="bigbtn danger" onclick="go('pedir')"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>PEDIR AYUDA<small>Tu ubicación se manda sola</small></button>
-    <button class="btn outline" onclick="go('salvo')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--safe)" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>Estoy bien</button>
+    <button class="bigbtn danger" onclick="irAPedir()"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>PEDIR AYUDA<small>Tu ubicación se manda sola</small></button>
+    <button class="btn outline" onclick="irASalvo()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--safe)" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>Estoy bien</button>
     <div class="spacer" style="flex:.8"></div>
   </section>
 
@@ -209,6 +209,29 @@ var SUBCATS = {
   GRUA:['carro volcado','escombro en vía','árbol caído']
 };
 
+// Sondeo temprano del GPS: se dispara apenas carga la pagina (aun en HOME),
+// antes de que el ciudadano escriba nada. El portal cautivo de Android suele
+// negar el GPS de inmediato (sin permiso real, no es un simple retraso). Si
+// eso pasa, el primer toque en "PEDIR AYUDA" o "Estoy bien" salta derecho a
+// Chrome, en vez de dejar llenar el formulario aqui para repetirlo alla. Si
+// el sondeo no resuelve a tiempo, sigue el flujo normal: el chequeo de mas
+// abajo, ya dentro de "pedir", sigue funcionando como respaldo.
+var gpsRoto = null;
+if(navigator.geolocation){
+  navigator.geolocation.getCurrentPosition(function(p){
+    gpsRoto = false;
+    S.lat=p.coords.latitude.toFixed(5); S.lon=p.coords.longitude.toFixed(5); S.acc=Math.round(p.coords.accuracy);
+  }, function(){ gpsRoto = true; }, {enableHighAccuracy:true, timeout:4000, maximumAge:0});
+} else {
+  gpsRoto = true;
+}
+// Punto de entrada de los 2 botones del home. Si ya sabemos que el GPS esta
+// roto aqui, saltamos a Chrome ANTES de que el ciudadano escriba nada: asi
+// llena el formulario una sola vez, ya en Chrome. Si el sondeo aun no
+// resuelve (gpsRoto sigue null), no espera: sigue el flujo normal.
+function irAPedir(){ if(gpsRoto){ abrirEnChrome('pedir'); return; } go('pedir'); }
+function irASalvo(){ if(gpsRoto){ abrirEnChrome('salvo'); return; } go('salvo'); }
+
 function go(v){
   document.querySelectorAll('.view').forEach(function(e){e.classList.toggle('on', e.dataset.view===v)});
   if(v==='pedir'){ pedirGps('here'); revisarListo(); }
@@ -241,7 +264,7 @@ function mostrarEscape(){
   var e=document.getElementById('escape'); if(!e) return;
   var ua=navigator.userAgent, isiOS=/iPhone|iPad|iPod/i.test(ua), isAnd=/Android/i.test(ua);
   if(isAnd){
-    e.innerHTML='<b style="color:#4C9AFF">¿Quieres enviar tu ubicación GPS exacta?</b><br>Ya guardamos lo que escribiste. Abre esta página en Chrome, solo falta el GPS:<br><button type="button" onclick="abrirEnChrome()" style="display:block;width:100%;margin-top:8px;background:#4C9AFF;color:#04162e;padding:12px;border-radius:10px;border:none;font-weight:700;font-size:15px;font-family:inherit;cursor:pointer">Abrir en Chrome</button>';
+    e.innerHTML='<b style="color:#4C9AFF">¿Quieres enviar tu ubicación GPS exacta?</b><br>Ya guardamos lo que escribiste. Abre esta página en Chrome, solo falta el GPS:<br><button type="button" onclick="abrirEnChrome(\'pedir\')" style="display:block;width:100%;margin-top:8px;background:#4C9AFF;color:#04162e;padding:12px;border-radius:10px;border:none;font-weight:700;font-size:15px;font-family:inherit;cursor:pointer">Abrir en Chrome</button>';
     e.style.display='block';
   }else if(isiOS){
     e.innerHTML='<b style="color:#4C9AFF">¿Quieres enviar tu ubicación GPS exacta?</b><br>Toca <b>Cancelar</b> arriba, elige <b>Usar sin conexión</b>, abre <b>Safari</b> y entra a <b>ayuda.homiapp.xyz</b>';
@@ -250,22 +273,26 @@ function mostrarEscape(){
 }
 // Construye las URLs de escape con lo que el ciudadano YA escribio (categoria,
 // detalle, lugar). Se llama al momento del clic (no antes), para llevar el
-// estado mas reciente. Destino: Chrome cae DIRECTO en la vista de categorias
-// (?v=pedir), ya con cat/d/l listos para restaurarEstado(). Usamos query param,
-// no fragmento: el '#' choca con el delimitador '#Intent' del intent:// y
-// Chrome no lo entrega como hash. El query si sobrevive completo.
-function construirUrlsEscape(){
+// estado mas reciente. `destino` es 'pedir' o 'salvo': que vista abre Chrome.
+// Chrome cae DIRECTO en esa vista (?v=destino), con cat/d/l listos para
+// restaurarEstado() si aplica. Usamos query param, no fragmento: el '#' choca
+// con el delimitador '#Intent' del intent:// y Chrome no lo entrega como
+// hash. El query si sobrevive completo.
+function construirUrlsEscape(destino){
+  destino = destino || 'pedir';
   var detalle=document.getElementById('msg').value.trim();
   var lugar=document.getElementById('lugar').value.trim();
-  var qs='v=pedir';
-  if(S.cat) qs+='&cat='+encodeURIComponent(S.cat);
-  if(detalle) qs+='&d='+encodeURIComponent(detalle);
-  if(lugar) qs+='&l='+encodeURIComponent(lugar);
+  var qs='v='+destino;
+  if(destino==='pedir'){
+    if(S.cat) qs+='&cat='+encodeURIComponent(S.cat);
+    if(detalle) qs+='&d='+encodeURIComponent(detalle);
+    if(lugar) qs+='&l='+encodeURIComponent(lugar);
+  }
   var HTTPS='https://ayuda.homiapp.xyz/?'+qs;
   var INTENT='intent://ayuda.homiapp.xyz/?'+qs+'#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+encodeURIComponent(HTTPS)+';end';
   return {HTTPS:HTTPS, INTENT:INTENT};
 }
-function abrirEnChrome(){ location.href = construirUrlsEscape().INTENT; }
+function abrirEnChrome(destino){ location.href = construirUrlsEscape(destino).INTENT; }
 // Lee cat/d/l de la URL (los puso construirUrlsEscape antes del salto a Chrome)
 // y rellena el formulario. Asi el ciudadano no repite lo que ya escribio.
 function restaurarEstado(){
@@ -403,10 +430,12 @@ function filaMono(k,v){ return '<div class="row"><span class="k">'+k+'</span><sp
 function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}); }
 function hora(){ var d=new Date(),p=function(n){return('0'+n).slice(-2)}; return p(d.getHours())+':'+p(d.getMinutes()); }
 document.getElementById('clock').textContent = hora();
-// Chrome abre la pagina con ?v=pedir (viene del intent Android): entra directo
-// a categorias, con lo ya escrito restaurado. go('pedir') dispara la captura
-// de GPS, que es el objetivo del salto.
-if(location.hash==='#pedir' || /[?&]v=pedir/.test(location.search)){ restaurarEstado(); go('pedir'); }
+// Chrome abre la pagina con ?v=pedir o ?v=salvo (viene del intent Android):
+// entra directo a esa vista, con lo ya escrito restaurado si aplica. go()
+// dispara la captura de GPS, que es el objetivo del salto.
+var vParam = new URLSearchParams(location.search).get('v');
+if(location.hash==='#pedir' || vParam==='pedir'){ restaurarEstado(); go('pedir'); }
+else if(vParam==='salvo'){ go('salvo'); }
 </script>
 </body>
 </html>
