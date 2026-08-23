@@ -109,6 +109,9 @@ accederá a Supabase con credenciales de servidor.
 
 La URL del Hub online será el `deploy-url` de la entrega. El visor 3D queda como evidencia complementaria.
 
+La preparación y operación exactas de la laptop conectada al LoRa Maestro están en
+[`OPERAR-SINCRONIZACION.md`](OPERAR-SINCRONIZACION.md).
+
 ## Estado del incremento
 
 1. **Implementado:** tabla local `sync_outbox`, identidad, secuencia y estado de sincronización.

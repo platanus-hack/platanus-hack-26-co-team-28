@@ -19,10 +19,11 @@ La documentación está ordenada por la pregunta que responde. El principio tran
 
 ## 3. Ejecutar y demostrar
 
-1. [`../lora-emergencia/docs/PLAN-DEMO.md`](../lora-emergencia/docs/PLAN-DEMO.md): guion de tres minutos.
-2. [`../lora-emergencia/center/README.md`](../lora-emergencia/center/README.md): ejecutar el centro.
-3. [`../lora-emergencia/center/CENTRO.md`](../lora-emergencia/center/CENTRO.md): operación Raspberry ↔ gateway ↔ nodos.
-4. [`../lora-emergencia/docs/PORTAL-CAUTIVO-E2E.md`](../lora-emergencia/docs/PORTAL-CAUTIVO-E2E.md): límites reales de portal y GPS.
+1. [`OPERAR-SINCRONIZACION.md`](OPERAR-SINCRONIZACION.md): guía para que Juan opere la laptop del Centro y valide offline → online.
+2. [`../lora-emergencia/docs/PLAN-DEMO.md`](../lora-emergencia/docs/PLAN-DEMO.md): guion de tres minutos.
+3. [`../lora-emergencia/center/README.md`](../lora-emergencia/center/README.md): ejecutar el centro.
+4. [`../lora-emergencia/center/CENTRO.md`](../lora-emergencia/center/CENTRO.md): operación Raspberry ↔ gateway ↔ nodos.
+5. [`../lora-emergencia/docs/PORTAL-CAUTIVO-E2E.md`](../lora-emergencia/docs/PORTAL-CAUTIVO-E2E.md): límites reales de portal y GPS.
 
 ## 4. Referencia e investigación
 
