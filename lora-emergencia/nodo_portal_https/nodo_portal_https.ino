@@ -415,8 +415,18 @@ String pageHttp() {
   return h;
 }
 
-// Pantalla de exito tras el POST del formulario (iOS, sin GPS). Aqui, y solo
-// aqui, van las instrucciones para mandar la ubicacion: la mejora se ofrece
+// Pantalla de exito tras el POST del formulario (iOS, sin GPS).
+//
+// Lleva el MISMO seguimiento en vivo que el portal HTTPS: los 4 pasos
+// (Recibida, En proceso, Ayuda en camino, Resuelto) que se actualizan solos
+// consultando /status cada 4 s. La placa guarda ahi el ultimo estado que le
+// llego del centro por radio (frame ST), y /status esta registrado tanto en
+// el servidor HTTPS como en el HTTP, asi que funciona igual dentro del CNA.
+// Antes esta pantalla era estatica: quien entraba por iPhone se quedaba sin
+// saber si alguien habia tomado su caso. La unica diferencia con Android debe
+// ser el arranque (el portal cautivo), no el seguimiento.
+//
+// Las instrucciones de ubicacion van aqui, y solo aqui: la mejora se ofrece
 // DESPUES de que el pedido ya salio, nunca como requisito antes.
 // (NHS: "empieza por las preguntas esenciales, las opcionales despues";
 //  NENA-STA-020.1-2020 §2.2.8: se responde "con la mejor ubicacion disponible")
@@ -440,6 +450,22 @@ String pageConfirm(String tipo, bool ok) {
   h += "h1{margin:0;font-size:23px;font-weight:800;text-align:center;letter-spacing:-.01em}";
   h += ".sub{color:#9AA0A6;font-size:15px;text-align:center;margin:8px auto 18px;max-width:30ch}";
   h += ".card{background:#161719;border:1.5px solid #2E3033;border-radius:14px;padding:14px 15px;font-size:14.5px}";
+  // Timeline: mismos tokens y misma forma que el portal HTTPS.
+  h += "#tl{margin-top:18px}";
+  h += ".tl-step{display:grid;grid-template-columns:24px 1fr;gap:12px;padding-bottom:18px}";
+  h += ".tl-step:last-child{padding-bottom:0}";
+  h += ".tl-step .rail{display:flex;flex-direction:column;align-items:center}";
+  h += ".tl-step .node{width:22px;height:22px;border-radius:50%;border:2.5px solid #2E3033;background:#161719;display:grid;place-items:center;flex:none}";
+  h += ".tl-step .line{width:2.5px;flex:1;background:#2E3033;margin-top:2px;min-height:14px}";
+  h += ".tl-step.done .node{background:#2FBF71;border-color:#2FBF71}.tl-step.done .line{background:#2FBF71}";
+  h += ".tl-step.done .node svg{width:11px;height:11px;color:#05130b}";
+  h += ".tl-step.now .node{border-color:#FF8A00;background:rgba(255,138,0,.22)}";
+  h += ".tl-step.cancel .node{border-color:#FF4438;background:rgba(255,68,56,.22)}";
+  h += ".tl-step.cancel .node svg{width:11px;height:11px;color:#FF4438}";
+  h += ".tl-step .t{font-weight:700;font-size:14.5px}";
+  h += ".tl-step.pending .t{color:#9AA0A6;opacity:.7}";
+  h += ".tl-step.cancel .t{color:#FF4438}";
+  h += ".tl-step .d{font-size:12.5px;color:#9AA0A6;margin-top:1px}";
   h += "details{margin-top:16px;background:#161719;border:1.5px solid #2E3033;border-radius:13px;padding:2px 14px}";
   h += "summary{padding:13px 0;font-size:14.5px;font-weight:700;color:#4C9AFF;cursor:pointer;min-height:44px;display:flex;align-items:center}";
   h += ".step{border-top:1px solid #2E3033;padding:11px 0;font-size:13.5px;color:#C9CCCE}.step b{color:#4C9AFF}";
@@ -462,15 +488,48 @@ String pageConfirm(String tipo, bool ok) {
     h += "<div class='sub'>Tu pedido de <b>" + nombre + "</b> quedó registrado. El puesto de mando todavía no confirma.</div>";
     h += "<div class='card'>La radio sigue reintentando sola. No cierres esta pantalla todavía.</div>";
   }
+  // Seguimiento en vivo, igual que en el portal HTTPS.
+  h += "<div id='tl'></div>";
   // La mejora de ubicacion, solo aqui y plegada.
   h += "<details><summary>Mandar también mi ubicación GPS (opcional)</summary>";
   h += "<div class='step'>Tu pedido ya salió. Esto solo agrega tu punto exacto en el mapa del mando.</div>";
+  h += "<div class='step'>Ojo: al salir de aquí pierdes esta pantalla de estado.</div>";
   h += "<div class='step'><b>1.</b> Toca <b>Cancelar</b> arriba a la derecha.</div>";
   h += "<div class='step'><b>2.</b> Elige <b>Usar sin conexión</b>.</div>";
   h += "<div class='step'><b>3.</b> Abre <b>Safari</b> y entra a <b>" + String(DOMAIN) + "</b></div>";
   h += "</details><div class='sp'></div>";
   h += "<a class='again' href='/'>Hacer otro pedido</a>";
-  h += "</div></body></html>";
+  h += "</div><script>";
+  // Mismos pasos, mismo mapeo de estados y misma regla del check final que
+  // portal_preview.html. Si se tocan alli, hay que tocarlos aqui.
+  h += "var PASOS=[['Recibida','el puesto de mando recibió tu solicitud'],";
+  h += "['En proceso','un operador está gestionando tu caso'],";
+  h += "['Ayuda en camino','una unidad va hacia ti'],";
+  h += "['Resuelto','te atendieron']];";
+  h += "function nivelDe(e){e=(e||'').toUpperCase();";
+  h += "if(e==='RESUELTA')return 4;";
+  h += "if(e.indexOf('CAMINO')>=0||e.indexOf('ASIGNADA')>=0||e==='DESPACHADA'||e==='ACEPTADA'||e==='EN_CURSO'||e==='ENLUGAR')return 3;";
+  h += "if(e.indexOf('GESTION')>=0||e==='EN_REVISION')return 2;";
+  h += "return 1;}";
+  h += "function esCancelada(e){return (e||'').toUpperCase().indexOf('CANCEL')>=0;}";
+  h += "var CHECK=\"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3'><path d='M20 6 9 17l-5-5'/></svg>\";";
+  // El ultimo paso alcanzado va 'now' salvo cuando el caso ya cerro: ahi va
+  // 'done', con su check. Sin esto, "Resuelto" nunca podria marcarse.
+  h += "function pintar(n){var cerrado=n>=PASOS.length,s='';";
+  h += "for(var i=0;i<PASOS.length;i++){";
+  h += "var cls=(i<n-1||(cerrado&&i===n-1))?'done':(i===n-1?'now':'pending');";
+  h += "var linea=i<PASOS.length-1?\"<div class='line'></div>\":'';";
+  h += "s+=\"<div class='tl-step \"+cls+\"'><div class='rail'><div class='node'>\"+(cls==='done'?CHECK:'')+'</div>'+linea+";
+  h += "\"</div><div><div class='t'>\"+PASOS[i][0]+\"</div><div class='d'>\"+(cls==='pending'?'Aún no':PASOS[i][1])+'</div></div></div>';}";
+  h += "document.getElementById('tl').innerHTML=s;}";
+  // Cancelar no es "mas avance": reemplaza el timeline por un paso propio.
+  h += "function pintarCancel(){document.getElementById('tl').innerHTML=";
+  h += "\"<div class='tl-step cancel'><div class='rail'><div class='node'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round'><path d='M6 6l12 12M18 6L6 18'/></svg></div></div><div><div class='t'>Solicitud cancelada</div><div class='d'>El puesto de mando canceló este pedido. Si sigues necesitando ayuda, pide de nuevo.</div></div></div>\";}";
+  h += "pintar(1);";
+  h += "function mirar(){fetch('/status',{cache:'no-store'}).then(function(r){return r.json()})";
+  h += ".then(function(s){if(esCancelada(s.estado))pintarCancel();else pintar(nivelDe(s.estado));}).catch(function(){});}";
+  h += "mirar();setInterval(mirar,4000);";
+  h += "</script></body></html>";
   return h;
 }
 
