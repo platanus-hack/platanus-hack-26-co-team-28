@@ -1,5 +1,12 @@
 .main { width: min(1240px, 100%); }
 
+.topbarActions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.promptButton { min-height: 36px; padding: 7px 11px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border-strong); border-radius: 7px; color: var(--nav-text); background: var(--surface); font: 600 12px var(--font-sans); white-space: nowrap; cursor: pointer; }
+.promptButton:hover { color: var(--text); border-color: var(--strong); }
+.promptButton:disabled { cursor: progress; opacity: .65; }
+.promptButton svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.copySuccess { color: var(--green); border-color: var(--success-border); background: var(--green-soft); }
+.copyError { color: var(--amber); border-color: var(--warning-border); background: var(--amber-soft); }
 .modeLabel { color: var(--muted); font: 12px var(--font-sans); }
 .switch { width: 38px; height: 22px; padding: 2px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--blue); cursor: pointer; }
 .switch span { display: block; width: 16px; height: 16px; margin-left: 16px; border-radius: 50%; background: var(--surface); transition: margin 140ms ease; }
@@ -12,7 +19,7 @@
 .progressTrack { height: 3px; margin-bottom: 12px; overflow: hidden; border-radius: 999px; background: var(--border); }
 .progressTrack span { display: block; height: 100%; border-radius: inherit; background: var(--blue); transition: width 180ms ease; }
 
-.stepper { margin-bottom: 12px; display: grid; grid-template-columns: repeat(6, minmax(72px, 1fr)); gap: 6px; overflow-x: auto; }
+.stepper { margin-bottom: 12px; display: grid; grid-template-columns: repeat(7, minmax(72px, 1fr)); gap: 6px; overflow-x: auto; }
 .stepper button { min-width: 90px; min-height: 46px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); background: var(--surface); cursor: pointer; display: flex; align-items: center; gap: 8px; text-align: left; }
 .stepper button:disabled { opacity: .42; cursor: not-allowed; }
 .stepper button span { width: 23px; height: 23px; flex: 0 0 23px; display: grid; place-items: center; border: 1px solid var(--border-strong); border-radius: 50%; font: 11px var(--mono); }
@@ -46,11 +53,8 @@
 .deviceState.error span { background: var(--red); }
 
 .helpRow { padding-top: 12px; display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--border); }
-.helpRow button, .helpRow a, .manualButton { padding: 0; border: 0; color: var(--action-text); background: transparent; font: 600 12px var(--font-sans); cursor: pointer; text-decoration: none; }
-.helpRow button:disabled { opacity: .55; cursor: progress; }
+.helpRow a, .manualButton { padding: 0; border: 0; color: var(--action-text); background: transparent; font: 600 12px var(--font-sans); cursor: pointer; text-decoration: none; }
 .helpRow a { color: var(--muted); }
-.assistantReply { margin-top: -7px; padding: 10px 12px; border-left: 2px solid var(--blue); color: var(--nav-text); background: var(--blue-soft); font-size: 12px; line-height: 1.45; }
-.providerError { border-left-color: var(--amber); background: var(--amber-soft); }
 
 .technical { color: var(--muted); font-size: 12px; }
 .technical summary { cursor: pointer; font-weight: 600; }
@@ -86,11 +90,12 @@
 
 @media (max-width: 680px) {
   .modeLabel { display: none; }
+  .topbarActions { gap: 7px; }
   .main { padding-top: 16px; }
   .pageHead { min-height: 50px; }
   .pageHead h2 { font-size: 22px; }
   .pageHead p { max-width: 29ch; font-size: 12px; }
-  .stepper { grid-template-columns: repeat(6, 50px); }
+  .stepper { grid-template-columns: repeat(7, 50px); }
   .stepper button { min-width: 50px; justify-content: center; padding: 7px; }
   .stepper button small { display: none; }
   .visual { min-height: 230px; padding: 12px; }

@@ -50,7 +50,8 @@ cd lora-emergencia
 python3 scripts/verificar_e2e.py
 ```
 
-El Hub online de solo lectura está en <https://woki-hub.vercel.app>.
+El Hub online inicia en <https://woki-hub.vercel.app> y su réplica operacional está en
+<https://woki-hub.vercel.app/command-center>.
 
 ### Demo pública del centro de mando
 
@@ -70,10 +71,12 @@ no debe usarse para una operación real. El Hub de Vercel sigue siendo el produc
 Requiere dos LilyGO TTGO LoRa32 T3 V1.6.1 de 915 MHz, antenas y un computador o Raspberry Pi:
 
 ```bash
-cd lora-emergencia
-bash scripts/desplegar_nodo.sh /dev/cu.usbserial-NODO
-bash scripts/desplegar_centro.sh /dev/cu.usbserial-GATEWAY
+bash lora-emergencia/scripts/instalar_maestro.sh
+bash lora-emergencia/scripts/instalar_esclavo.sh
 ```
+
+Los instaladores preparan una laptop limpia sin Arduino IDE: descargan Arduino CLI, ESP32,
+librerías y, para el Maestro, un entorno Python aislado. Conecta siempre la antena antes del USB.
 
 El portal HTTPS necesita un `nodo_portal_https/credentials.h` provisionado localmente; la clave privada no se versiona. Nunca energices una placa sin antena.
 

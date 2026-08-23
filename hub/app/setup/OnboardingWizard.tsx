@@ -4,52 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 
+import { CommandCenterSidebar } from "@/components/CommandCenterSidebar";
 import type { OnboardingGuide, OnboardingStepId } from "@/lib/onboarding";
 
 import styles from "./setup.module.css";
 
-type SerialState = "idle" | "connecting" | "connected" | "unsupported" | "error";
 type ProviderState = "idle" | "loading" | "success" | "fallback" | "error";
-
-type SerialPortLike = {
-  getInfo?: () => { usbVendorId?: number; usbProductId?: number };
-};
-
-type SerialNavigator = Navigator & {
-  serial?: { requestPort: () => Promise<SerialPortLike> };
-};
-
-function portLabel(port: SerialPortLike) {
-  const info = port.getInfo?.();
-  if (!info?.usbVendorId) return "Puerto USB autorizado";
-  const vendor = info.usbVendorId.toString(16).toUpperCase().padStart(4, "0");
-  const product = info.usbProductId?.toString(16).toUpperCase().padStart(4, "0");
-  return product ? `USB ${vendor}:${product}` : `USB ${vendor}`;
-}
-
-function CommandCenterSidebar() {
-  return (
-    <aside className="sidebar">
-      <Link className="brand" href="/" aria-label="Volver al Centro LoRa">
-        <span className="brand-mark" aria-hidden="true" />
-        <span className="brand-label">Centro LoRa</span>
-      </Link>
-
-      <nav aria-label="Navegación principal">
-        <Link href="/"><span className="nav-icon" aria-hidden="true">◉</span><span className="nav-label">Overview</span></Link>
-        <span className="nav-disabled" aria-disabled="true"><span className="nav-icon" aria-hidden="true">!</span><span className="nav-label">Solicitudes</span></span>
-        <Link href="/setup" aria-current="page"><span className="nav-icon" aria-hidden="true">＋</span><span className="nav-label">Preparar kit</span></Link>
-        <span className="nav-disabled" aria-disabled="true"><span className="nav-icon" aria-hidden="true">R</span><span className="nav-label">Recursos</span></span>
-        <span className="nav-disabled" aria-disabled="true"><span className="nav-icon" aria-hidden="true">≋</span><span className="nav-label">Red LoRa</span></span>
-      </nav>
-
-      <div className="sidebar-footer">
-        <span className="status-dot connected" aria-hidden="true" />
-        <span>Configuración guiada</span>
-      </div>
-    </aside>
-  );
-}
+type CopyState = "idle" | "copying" | "success" | "error";
 
 function SpeakerIcon() {
   return (
@@ -60,16 +21,22 @@ function SpeakerIcon() {
   );
 }
 
+function CopyIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </svg>
+  );
+}
+
 export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
   const [simulation, setSimulation] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
   const [completed, setCompleted] = useState<OnboardingStepId[]>([]);
-  const [serialState, setSerialState] = useState<SerialState>("idle");
-  const [serialMessage, setSerialMessage] = useState("");
   const [voiceState, setVoiceState] = useState<ProviderState>("idle");
   const [voiceMessage, setVoiceMessage] = useState("");
-  const [assistantState, setAssistantState] = useState<ProviderState>("idle");
-  const [assistantReply, setAssistantReply] = useState("");
+  const [copyState, setCopyState] = useState<CopyState>("idle");
   const [finished, setFinished] = useState(false);
   const step = guide.steps[activeIndex];
   const isCompleted = completed.includes(step.id);
@@ -78,8 +45,6 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
   function resetGuides() {
     setVoiceState("idle");
     setVoiceMessage("");
-    setAssistantState("idle");
-    setAssistantReply("");
   }
 
   function goToStep(index: number) {
@@ -97,36 +62,7 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
     setActiveIndex((current) => current + 1);
   }
 
-  async function detectBoard() {
-    const browser = navigator as SerialNavigator;
-    if (!window.isSecureContext || !browser.serial) {
-      setSerialState("unsupported");
-      setSerialMessage("Web Serial no está disponible. Usa el modo técnico.");
-      return;
-    }
-
-    setSerialState("connecting");
-    setSerialMessage("Selecciona la placa TTGO.");
-    try {
-      const port = await browser.serial.requestPort();
-      setSerialState("connected");
-      setSerialMessage(`${portLabel(port)} · placa detectada.`);
-    } catch (cause) {
-      const cancelled = cause instanceof DOMException && cause.name === "NotFoundError";
-      setSerialState("error");
-      setSerialMessage(cancelled ? "No seleccionaste una placa." : "No se pudo abrir el puerto USB.");
-    }
-  }
-
   function runPrimaryAction() {
-    if (simulation) {
-      completeAndAdvance();
-      return;
-    }
-    if (step.id === "usb" && serialState !== "connected") {
-      void detectBoard();
-      return;
-    }
     completeAndAdvance();
   }
 
@@ -160,18 +96,16 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
     }
   }
 
-  async function askAnthropic() {
-    setAssistantState("loading");
-    setAssistantReply("");
+  async function copySetupPrompt() {
+    setCopyState("copying");
     try {
-      const response = await fetch(`/api/onboarding/assist?step=${encodeURIComponent(step.id)}`);
-      const body = await response.json() as { answer?: string; error?: string };
-      if (!response.ok || !body.answer) throw new Error(body.error ?? "provider-unavailable");
-      setAssistantState("success");
-      setAssistantReply(body.answer);
+      const response = await fetch("/onboarding/WOKI-SETUP-PROMPT.md");
+      if (!response.ok) throw new Error("prompt-unavailable");
+      const prompt = await response.text();
+      await navigator.clipboard.writeText(prompt);
+      setCopyState("success");
     } catch {
-      setAssistantState("error");
-      setAssistantReply("No se pudo cargar la ayuda. Consulta la fuente del repositorio.");
+      setCopyState("error");
     }
   }
 
@@ -179,8 +113,6 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
     setSimulation(enabled);
     setActiveIndex(0);
     setCompleted([]);
-    setSerialState("idle");
-    setSerialMessage("");
     setFinished(false);
     resetGuides();
   }
@@ -188,8 +120,6 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
   function restart() {
     setActiveIndex(0);
     setCompleted([]);
-    setSerialState("idle");
-    setSerialMessage("");
     setFinished(false);
     resetGuides();
   }
@@ -197,22 +127,33 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
   return (
     <div className="app-shell">
       <a className="skip-link" href="#setup-content">Ir al contenido</a>
-      <CommandCenterSidebar />
+      <CommandCenterSidebar setup />
 
       <div className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">Configuración</p><h1>Preparar kit</h1></div>
-          <div className="topbar-status">
-            <span className={styles.modeLabel}>Simular sin dispositivos</span>
+          <div className={styles.topbarActions}>
             <button
-              className={styles.switch}
+              className={`${styles.promptButton} ${copyState === "success" ? styles.copySuccess : copyState === "error" ? styles.copyError : ""}`}
+              disabled={copyState === "copying"}
               type="button"
-              role="switch"
-              aria-checked={simulation}
-              aria-label="Simular setup sin dispositivos"
-              onClick={() => changeMode(!simulation)}
-            ><span /></button>
-            <span className={`badge ${simulation ? "action" : "success"}`}>{simulation ? "Simulación" : "Modo real"}</span>
+              onClick={() => void copySetupPrompt()}
+            >
+              <CopyIcon />
+              {copyState === "copying" ? "Copiando…" : copyState === "success" ? "Prompt copiado" : copyState === "error" ? "Reintentar" : "Copiar prompt"}
+            </button>
+            <div className="topbar-status">
+              <span className={styles.modeLabel}>Simular sin dispositivos</span>
+              <button
+                className={styles.switch}
+                type="button"
+                role="switch"
+                aria-checked={simulation}
+                aria-label="Simular setup sin dispositivos"
+                onClick={() => changeMode(!simulation)}
+              ><span /></button>
+              <span className={`badge ${simulation ? "action" : "success"}`}>{simulation ? "Simulación" : "Modo real"}</span>
+            </div>
           </div>
         </header>
 
@@ -224,7 +165,7 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
               <h2 id="finish-title">{simulation ? "Recorrido listo" : "GRUA07 listo"}</h2>
               <p>{simulation ? "No se modificó ningún dispositivo." : "El nodo recibe misiones y confirma por LoRa."}</p>
               <div className={styles.finishActions}>
-                <Link className={styles.primaryLink} href="/">Volver al Centro</Link>
+                <Link className={styles.primaryLink} href="/command-center">Entrar al Centro</Link>
                 <button className={styles.secondaryButton} type="button" onClick={restart}>Repetir</button>
               </div>
             </section>
@@ -279,20 +220,9 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
                   <p className={styles.lead}>{step.instruction}</p>
                   <ul className={styles.factList}>{step.facts.map((fact) => <li key={fact}>{fact}</li>)}</ul>
 
-                  {step.id === "usb" && serialMessage && (
-                    <div className={`${styles.deviceState} ${styles[serialState]}`} role="status"><span aria-hidden="true" />{serialMessage}</div>
-                  )}
-
                   <div className={styles.helpRow}>
-                    <button disabled={assistantState === "loading"} type="button" onClick={() => void askAnthropic()} title="Ayuda de Anthropic basada en la documentación WOKI">
-                      {assistantState === "loading" ? "Consultando…" : "✦ Ayuda contextual"}
-                    </button>
                     {step.documentation && <a href={step.documentation} target="_blank" rel="noreferrer">Ver fuente ↗</a>}
                   </div>
-
-                  {assistantReply && (
-                    <div className={`${styles.assistantReply} ${assistantState === "error" ? styles.providerError : ""}`} role="status">{assistantReply}</div>
-                  )}
 
                   {step.command && (
                     <details className={styles.technical}>
@@ -303,15 +233,11 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
                   )}
 
                   <div className={styles.actions}>
-                    <button className={styles.primaryButton} disabled={serialState === "connecting"} type="button" onClick={runPrimaryAction}>
-                      {step.id === "usb" && !simulation && serialState === "connected" ? "Continuar" : serialState === "connecting" ? "Esperando placa…" : isCompleted ? "Continuar" : step.action}
+                    <button className={styles.primaryButton} type="button" onClick={runPrimaryAction}>
+                      {isCompleted ? "Continuar" : step.action}
                     </button>
                     <button className={styles.previousButton} type="button" disabled={activeIndex === 0} onClick={() => goToStep(activeIndex - 1)}>Anterior</button>
                   </div>
-
-                  {step.id === "usb" && !simulation && (serialState === "unsupported" || serialState === "error") && (
-                    <button className={styles.manualButton} type="button" onClick={completeAndAdvance}>Verificación manual</button>
-                  )}
                 </div>
               </section>
             </>

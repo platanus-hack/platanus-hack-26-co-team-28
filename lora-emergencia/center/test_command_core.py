@@ -64,6 +64,36 @@ class CenterStoreTests(unittest.TestCase):
         self.assertNotIn("detail", event["payload"]["request"])
         self.assertNotIn("lat", event["payload"]["request"])
         self.assertNotIn("lon", event["payload"]["request"])
+        self.assertEqual(event["payload"]["map_point"], {"lat": 4.1, "lon": -74.1})
+
+    def test_center_resource_safe_person_and_broadcast_have_replica_events(self):
+        self.store.set_center_position({"lat": 4.6767, "lon": -74.0483, "label": "Base"})
+        self.store.ingest(RadioFrame.parse("GRUA07|CENTRO|HB|1|GRUA|NORTE"), "-60", "9")
+        self.store.ingest(RadioFrame.parse("GRUA07|CENTRO|POS|2|4.67891|-74.05123|8|0|disponible"), "-61", "8")
+        self.store.ingest(RadioFrame.parse("CIVIL2|CENTRO|OK|3|Ana|123456|4.6791|-74.0522|Parque"))
+        broadcast = RadioFrame("CENTRO", "BCAST", "BC", 9, ("ALL", "0", "999999", "Evacuar"))
+        self.store.start_broadcast(broadcast)
+        self.store.finish_broadcast(broadcast, True)
+        self.store.ingest(RadioFrame.parse("GRUA07|CENTRO|BCA|4|9"))
+
+        events = self.store.list_pending_sync_events()
+        kinds = [event["kind"] for event in events]
+
+        self.assertIn("CENTER_POSITION_UPDATED", kinds)
+        self.assertGreaterEqual(kinds.count("RESOURCE_UPDATED"), 2)
+        self.assertIn("SAFE_PERSON_REPORTED", kinds)
+        self.assertIn("BROADCAST_CREATED", kinds)
+        self.assertIn("BROADCAST_SENT", kinds)
+        self.assertIn("BROADCAST_RECEIPT", kinds)
+
+        resource = next(event for event in reversed(events) if event["kind"] == "RESOURCE_UPDATED")
+        self.assertEqual(resource["payload"]["resource"]["node"], "GRUA07")
+        self.assertEqual(resource["payload"]["map_point"], {"lat": 4.679, "lon": -74.051})
+
+        safe = next(event for event in events if event["kind"] == "SAFE_PERSON_REPORTED")
+        self.assertNotIn("name", safe["payload"]["safe_person"])
+        self.assertNotIn("document", safe["payload"]["safe_person"])
+        self.assertEqual(safe["payload"]["safe_person"]["place"], "Parque")
 
     def test_sync_identity_and_sequence_survive_restart(self):
         self.add_sos()
@@ -123,6 +153,11 @@ class CenterStoreTests(unittest.TestCase):
         self.assertEqual(self.store.ingest(resolved), "UPDATED")
         self.assertEqual(self.store.state()["requests"][0]["estado"], "RESUELTA")
         self.assertEqual(self.store.state()["resources"][0]["state"], "disponible")
+        resource_events = [
+            event for event in self.store.list_pending_sync_events()
+            if event["kind"] == "RESOURCE_UPDATED"
+        ]
+        self.assertEqual(resource_events[-1]["payload"]["resource"]["state"], "disponible")
 
     def test_cannot_dispatch_request_twice(self):
         self.add_sos()

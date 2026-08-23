@@ -1,4 +1,4 @@
-export type OnboardingStepId = "inventory" | "antenna" | "usb" | "configure" | "local-wifi" | "verify";
+export type OnboardingStepId = "source" | "inventory" | "antenna" | "master" | "slave" | "local-wifi" | "verify";
 
 export type OnboardingStep = {
   id: OnboardingStepId;
@@ -26,10 +26,30 @@ export type OnboardingGuide = {
 
 export function resourceOnboarding(): OnboardingGuide {
   return {
-    title: "Configura un nodo de recurso",
-    promise: "Déjalo listo para recibir misiones por LoRa, incluso sin internet.",
-    estimatedMinutes: 15,
+    title: "Configura el kit WOKI",
+    promise: "Prepara el Maestro y un recurso para operar por LoRa, incluso sin internet.",
+    estimatedMinutes: 30,
     steps: [
+      {
+        id: "source",
+        blocking: true,
+        eyebrow: "Preparación de la laptop",
+        title: "Obtén el proyecto WOKI",
+        instruction: "Descarga una copia del repositorio antes de conectar las placas.",
+        image: "/onboarding/get-woki-project.png",
+        imageWidth: 1672,
+        imageHeight: 941,
+        imageAlt: "Laptop descargando el proyecto WOKI junto a una placa, antena y cable todavía separados",
+        facts: [
+          "Usa git clone si ya tienes Git",
+          "También puedes descargar y descomprimir el ZIP",
+          "Conserva la carpeta completa en la laptop",
+        ],
+        action: "Ya tengo la carpeta WOKI",
+        command: "git clone https://github.com/platanus-hack/platanus-hack-26-co-team-28.git\ncd platanus-hack-26-co-team-28",
+        documentation: "https://github.com/platanus-hack/platanus-hack-26-co-team-28",
+        documentationLabel: "Abrir repositorio",
+      },
       {
         id: "inventory",
         blocking: false,
@@ -69,45 +89,46 @@ export function resourceOnboarding(): OnboardingGuide {
         documentationLabel: "Ver advertencias de radio",
       },
       {
-        id: "usb",
+        id: "master",
         blocking: true,
-        eyebrow: "Conexión física",
-        title: "Conecta la placa por USB",
-        instruction: "Conecta un cable micro-USB de datos y selecciona la placa.",
+        eyebrow: "Laptop del Centro",
+        title: "Prepara el LoRa Maestro",
+        instruction: "Conecta el Maestro por USB y ejecuta el instalador desde la carpeta WOKI.",
+        image: "/onboarding/command-center-wiring.webp",
+        imageWidth: 1774,
+        imageHeight: 887,
+        imageAlt: "Conexión del LoRa Maestro por USB a la laptop del Centro de Comando",
+        facts: [
+          "Instala Arduino CLI, ESP32, librerías y Python",
+          "Flashea el gateway y arranca el Centro real",
+          "La sincronización online sigue siendo opcional",
+        ],
+        action: "Maestro y Centro listos",
+        command: "bash lora-emergencia/scripts/instalar_maestro.sh",
+        documentation:
+          "https://github.com/platanus-hack/platanus-hack-26-co-team-28/blob/main/docs/OPERAR-SINCRONIZACION.md",
+        documentationLabel: "Abrir guía del Centro",
+      },
+      {
+        id: "slave",
+        blocking: true,
+        eyebrow: "Nodo de campo",
+        title: "Prepara el LoRa Esclavo",
+        instruction: "En otra terminal, conecta la placa de recurso y ejecuta su instalador.",
         image: "/onboarding/antenna-first.webp",
         imageWidth: 1536,
         imageHeight: 1024,
-        imageAlt: "Placa con antena conectada y cable micro-USB alineado con el puerto",
+        imageAlt: "Placa LoRa Esclavo con la antena instalada antes de conectar el cable USB",
         facts: [
-          "Usa Chrome o Edge",
-          "Si no aparece, prueba otro cable",
-          "Detectar la placa todavía no instala firmware",
+          "Define un ID único, tipo y zona",
+          "Flashea el firmware de recurso",
+          "Crea la red local RECURSO_<ID>",
         ],
-        action: "Detectar placa USB",
-        command: "arduino-cli board list",
-        documentation: "https://github.com/platanus-hack/platanus-hack-26-co-team-28/blob/main/lora-emergencia/docs/SETUP.md",
-        documentationLabel: "Resolver problemas de conexión",
-      },
-      {
-        id: "configure",
-        blocking: true,
-        eyebrow: "Perfil operativo actual",
-        title: "Instala el firmware de recurso",
-        instruction: "Instala el perfil operativo actual y confirma el flasheo.",
-        image: "/onboarding/kit-overview.webp",
-        imageWidth: 1672,
-        imageHeight: 941,
-        imageAlt: "Kit WOKI con placas, antenas, cables, celulares y Raspberry Pi",
-        facts: [
-          "Recurso: GRUA07 · tipo GRUA",
-          "Zona: NORTE",
-          "Red local: RECURSO_GRUA07",
-        ],
-        action: "Ya instalé el firmware",
-        command: "bash lora-emergencia/scripts/flash.sh nodo_recurso <puerto>",
+        action: "Esclavo listo",
+        command: "bash lora-emergencia/scripts/instalar_esclavo.sh",
         documentation:
-          "https://github.com/platanus-hack/platanus-hack-26-co-team-28/blob/main/lora-emergencia/docs/SETUP.md",
-        documentationLabel: "Abrir guía de instalación",
+          "https://github.com/platanus-hack/platanus-hack-26-co-team-28/blob/main/lora-emergencia/center/CENTRO.md",
+        documentationLabel: "Abrir guía del recurso",
       },
       {
         id: "local-wifi",

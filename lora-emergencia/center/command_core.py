@@ -23,6 +23,17 @@ def clean_field(value: object, max_length: int = 80) -> str:
     return str(value or "").replace("|", " ").replace("\n", " ").replace("\r", " ")[:max_length]
 
 
+def approximate_map_point(lat: object, lon: object) -> Optional[dict]:
+    """Return a map-safe point rounded to roughly a city block."""
+    try:
+        latitude, longitude = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return None
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return None
+    return {"lat": round(latitude, 3), "lon": round(longitude, 3)}
+
+
 @dataclass(frozen=True)
 class RadioFrame:
     origin: str
@@ -322,24 +333,63 @@ class CenterStore:
             ),
         )
         request = self._db.execute(
-            "SELECT node,seq,category,priority,state,resource_node,created_at,updated_at "
+            "SELECT node,seq,category,priority,state,resource_node,place,lat,lon,created_at,updated_at "
             "FROM requests WHERE id=?",
             (request_id,),
         ).fetchone()
         if request:
+            request_payload = {
+                key: request[key] for key in (
+                    "node", "seq", "category", "priority", "state", "resource_node",
+                    "place", "created_at", "updated_at",
+                )
+            }
+            payload = {
+                "request": request_payload,
+                "transition": {
+                    "from": from_state,
+                    "to": to_state,
+                    "actor": clean_field(actor, 64),
+                },
+                "metadata": metadata or {},
+            }
+            map_point = approximate_map_point(request["lat"], request["lon"])
+            if map_point:
+                payload["map_point"] = map_point
             self._enqueue_sync_event(
                 "REQUEST_" + clean_field(event_type, 32).upper(),
-                {
-                    "request": dict(request),
-                    "transition": {
-                        "from": from_state,
-                        "to": to_state,
-                        "actor": clean_field(actor, 64),
-                    },
-                    "metadata": metadata or {},
-                },
+                payload,
                 created_at,
             )
+
+    def _enqueue_resource_snapshot(self, node: str, occurred_at: Optional[float] = None) -> None:
+        resource = self._db.execute(
+            "SELECT node,kind,zone,state,lat,lon,accuracy,last_seen,position_seen_at,rssi,snr "
+            "FROM resources WHERE node=?",
+            (node,),
+        ).fetchone()
+        if not resource:
+            return
+        resource_payload = {
+            key: resource[key] for key in (
+                "node", "kind", "zone", "state", "accuracy", "last_seen",
+                "position_seen_at", "rssi", "snr",
+            )
+        }
+        payload = {"resource": resource_payload}
+        map_point = approximate_map_point(resource["lat"], resource["lon"])
+        if map_point:
+            payload["map_point"] = map_point
+        self._enqueue_sync_event("RESOURCE_UPDATED", payload, occurred_at)
+
+    def _enqueue_broadcast_snapshot(self, message_id: int, kind: str) -> None:
+        broadcast = self._db.execute(
+            "SELECT message_id,scope,priority,message,expires_at,created_at,status "
+            "FROM broadcasts WHERE message_id=?",
+            (message_id,),
+        ).fetchone()
+        if broadcast:
+            self._enqueue_sync_event(kind, {"broadcast": dict(broadcast)})
 
     def next_message_id(self) -> int:
         with self._lock, self._db:
@@ -360,6 +410,11 @@ class CenterStore:
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (value,),
             )
+            payload = {"center": {"label": clean_field(position.get("label", "Centro"), 80)}}
+            map_point = approximate_map_point(position.get("lat"), position.get("lon"))
+            if map_point:
+                payload["map_point"] = map_point
+            self._enqueue_sync_event("CENTER_POSITION_UPDATED", payload)
         return position
 
     def get_center_position(self) -> Optional[dict]:
@@ -432,6 +487,7 @@ class CenterStore:
         if len(frame.payload) < 5:
             return "INVALID"
         name, document, lat, lon, place = frame.payload[:5]
+        created_at = time.time()
         with self._lock, self._db:
             cursor = self._db.execute(
                 "INSERT OR IGNORE INTO safe_people(node,seq,name,document,lat,lon,place,rssi,snr,created_at) "
@@ -439,9 +495,22 @@ class CenterStore:
                 (
                     frame.origin, frame.message_id, clean_field(name), clean_field(document),
                     clean_field(lat), clean_field(lon), clean_field(place), clean_field(rssi),
-                    clean_field(snr), time.time(),
+                    clean_field(snr), created_at,
                 ),
             )
+            if cursor.rowcount:
+                payload = {
+                    "safe_person": {
+                        "node": frame.origin,
+                        "seq": frame.message_id,
+                        "place": clean_field(place),
+                        "created_at": created_at,
+                    }
+                }
+                map_point = approximate_map_point(lat, lon)
+                if map_point:
+                    payload["map_point"] = map_point
+                self._enqueue_sync_event("SAFE_PERSON_REPORTED", payload, created_at)
         return "CREATED" if cursor.rowcount else "DUPLICATE"
 
     def _request_for_payload(self, payload: tuple[str, ...]):
@@ -498,6 +567,7 @@ class CenterStore:
                 request["state"], new_state,
                 {"resource_state": frame.payload[2], "message_id": frame.message_id},
             )
+            self._enqueue_resource_snapshot(frame.origin)
         return "UPDATED"
 
     def _ingest_position(self, frame: RadioFrame, rssi: str, snr: str) -> str:
@@ -523,18 +593,21 @@ class CenterStore:
                     now, now, rssi, snr,
                 ),
             )
+            self._enqueue_resource_snapshot(frame.origin, now)
         return "UPDATED"
 
     def _ingest_heartbeat(self, frame: RadioFrame, rssi: str, snr: str) -> str:
         kind = frame.payload[0] if frame.payload else "RECURSO"
         zone = frame.payload[1] if len(frame.payload) > 1 else "SIN_ZONA"
+        now = time.time()
         with self._lock, self._db:
             self._db.execute(
                 "INSERT INTO resources(node,kind,zone,last_seen,rssi,snr) VALUES(?,?,?,?,?,?) "
                 "ON CONFLICT(node) DO UPDATE SET kind=excluded.kind,zone=excluded.zone,"
                 "last_seen=excluded.last_seen,rssi=excluded.rssi,snr=excluded.snr",
-                (frame.origin, clean_field(kind), clean_field(zone), time.time(), rssi, snr),
+                (frame.origin, clean_field(kind), clean_field(zone), now, rssi, snr),
             )
+            self._enqueue_resource_snapshot(frame.origin, now)
         return "UPDATED"
 
     def _ingest_broadcast_ack(self, frame: RadioFrame, _rssi: str, _snr: str) -> str:
@@ -550,10 +623,15 @@ class CenterStore:
             ).fetchone()
             if not exists:
                 return "REJECTED"
-            self._db.execute(
+            cursor = self._db.execute(
                 "INSERT OR IGNORE INTO broadcast_receipts(broadcast_id,node,received_at) VALUES(?,?,?)",
                 (broadcast_id, frame.origin, time.time()),
             )
+            if cursor.rowcount:
+                self._enqueue_sync_event(
+                    "BROADCAST_RECEIPT",
+                    {"broadcast_receipt": {"broadcast_id": broadcast_id, "node": frame.origin}},
+                )
         return "UPDATED"
 
     def start_broadcast(self, frame: RadioFrame) -> None:
@@ -566,6 +644,7 @@ class CenterStore:
                 "VALUES(?,?,?,?,?,?, 'SENDING')",
                 (frame.message_id, scope, priority, message, int(expires_at), time.time()),
             )
+            self._enqueue_broadcast_snapshot(frame.message_id, "BROADCAST_CREATED")
 
     def finish_broadcast(self, frame: RadioFrame, sent: bool) -> None:
         status = "SENT" if sent else "FAILED"
@@ -581,6 +660,7 @@ class CenterStore:
                 "VALUES('OUT',?,?,?,?,?,?,?)",
                 (frame.origin, frame.destination, frame.kind, frame.message_id, frame.encode(), status, time.time()),
             )
+            self._enqueue_broadcast_snapshot(frame.message_id, "BROADCAST_" + status)
 
     def record_broadcast(self, frame: RadioFrame) -> None:
         """Compatibility helper for callers that already completed transmission."""
@@ -651,6 +731,7 @@ class CenterStore:
                 "UPDATE resources SET state='disponible' WHERE node=? AND state='reservado'",
                 (resource_node,),
             )
+            self._enqueue_resource_snapshot(resource_node)
 
     def mark_dispatched(
         self, request_id: int, resource_node: str, frame: RadioFrame,
@@ -674,6 +755,7 @@ class CenterStore:
                 request_id, "DISPATCHED", actor, reason, "ENVIANDO", "DESPACHADA",
                 {"resource_node": resource_node, "message_id": frame.message_id},
             )
+            self._enqueue_resource_snapshot(resource_node)
         self.record_event("OUT", frame, frame.encode(), "DELIVERED")
 
     def request_action(self, request_id: int, action: str, actor: str, reason: str) -> dict:
@@ -714,6 +796,8 @@ class CenterStore:
                 request_id, "HUMAN_" + action.upper(), actor, reason,
                 request["state"], to_state, {},
             )
+            if request["resource_node"]:
+                self._enqueue_resource_snapshot(request["resource_node"])
         return self.get_request(request_id)
 
     def list_requests(self, state="", category="", priority=None, query="", limit=100, open_only=False):

@@ -7,6 +7,7 @@ export type WokiEvent = {
   occurred_at: string;
   received_at: string;
   payload: {
+    map_point?: { lat: number; lon: number };
     request?: {
       node?: string;
       seq?: number;
@@ -14,8 +15,35 @@ export type WokiEvent = {
       priority?: number;
       state?: string;
       resource_node?: string | null;
+      place?: string;
+      created_at?: number;
+      updated_at?: number;
     };
+    resource?: {
+      node?: string;
+      kind?: string;
+      zone?: string;
+      state?: string;
+      accuracy?: string;
+      last_seen?: number;
+      position_seen_at?: number;
+      rssi?: string;
+      snr?: string;
+    };
+    center?: { label?: string };
+    safe_person?: { node?: string; seq?: number; place?: string; created_at?: number };
+    broadcast?: {
+      message_id?: number;
+      scope?: string;
+      priority?: string;
+      message?: string;
+      expires_at?: number;
+      created_at?: number;
+      status?: string;
+    };
+    broadcast_receipt?: { broadcast_id?: number; node?: string };
     transition?: { from?: string | null; to?: string | null; actor?: string };
+    metadata?: Record<string, unknown>;
   };
   schema_version: number;
 };

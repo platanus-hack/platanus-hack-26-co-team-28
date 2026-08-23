@@ -26,20 +26,23 @@ conexión, los eventos quedan pendientes y se reintentan después.
 - Juan debe recibir `WOKI_SYNC_TOKEN` por un canal privado. Es el mismo secreto configurado en
   Vercel; no es una clave de Supabase, Anthropic ni ElevenLabs.
 
-## Preparación única en macOS
+## Preparación única en macOS o Linux
 
-Desde la raíz del repositorio:
+Obtén el repositorio con `git clone` o descarga el ZIP. Desde la carpeta raíz ejecuta:
 
 ```bash
-git pull --ff-only
-cd lora-emergencia/center
-
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+bash lora-emergencia/scripts/instalar_maestro.sh
 ```
 
-Guarda la configuración fuera del repositorio. Crea el directorio y abre el archivo:
+El instalador detecta la placa y prepara Arduino CLI, ESP32, RadioLib, U8g2 y un Python aislado;
+no requiere Arduino IDE. Antes de flashear exige confirmar que la antena 915 MHz está conectada.
+Si hay varios puertos usa `--port /dev/cu.usbserial-XXXXXXXX`.
+
+Al final solicita de forma privada el `WOKI_SYNC_TOKEN`. Si se ingresa, lo guarda fuera del
+repositorio en `~/.config/woki/center.env` con permisos restringidos y arranca el Centro en
+<http://localhost:8080>. Si se omite, el Centro opera completamente offline.
+
+La configuración también puede crearse manualmente. Crea el directorio y abre el archivo:
 
 ```bash
 mkdir -p ~/.config/woki
@@ -62,41 +65,37 @@ chmod 600 ~/.config/woki/center.env
 
 Ese archivo nunca debe copiarse al repositorio ni compartirse por chat.
 
-## Encontrar el puerto del LoRa Maestro
+## Preparar un LoRa Esclavo de recurso
 
-Conecta la placa con la antena instalada y ejecuta:
+Conecta su antena, cambia la placa USB y ejecuta:
 
 ```bash
-arduino-cli board list
+bash lora-emergencia/scripts/instalar_esclavo.sh
 ```
 
-En macOS normalmente será parecido a:
-
-```text
-/dev/cu.usbserial-XXXXXXXX
-```
-
-En Linux o Raspberry Pi suele ser `/dev/ttyUSB0` o `/dev/ttyACM0`.
+El instalador pregunta el ID, tipo y zona; por defecto prepara `GRUA07`, `GRUA`, `NORTE`. El
+celular se conecta luego a `RECURSO_GRUA07` y abre <http://192.168.4.1> sin instalar una app.
 
 ## Arranque diario
 
 ```bash
-cd lora-emergencia/center
-source .venv/bin/activate
-source ~/.config/woki/center.env
+cd lora-emergencia
+[ -f ~/.config/woki/center.env ] && source ~/.config/woki/center.env
 
-python3 center.py /dev/cu.usbserial-XXXXXXXX --port 8081
+center/.venv/bin/python center/center.py /dev/cu.usbserial-XXXXXXXX \
+  --host 127.0.0.1 --port 8080 --db center/center.db
 ```
 
 Reemplaza el puerto por el obtenido en el paso anterior. La terminal debe mostrar:
 
 ```text
 Sincronización online habilitada.
-Command center en http://127.0.0.1:8081
+Command center en http://127.0.0.1:8080
 ```
 
-Abre el dashboard local en <http://localhost:8081> y el Hub remoto en
-<https://woki-hub.vercel.app>.
+Abre el dashboard local en <http://localhost:8080>. En el Hub remoto, el flujo referencial es
+<https://woki-hub.vercel.app> → preparación guiada →
+<https://woki-hub.vercel.app/command-center>. Ese acceso no implementa autenticación real.
 
 ## Prueba offline → online
 
@@ -105,11 +104,15 @@ Abre el dashboard local en <http://localhost:8081> y el Hub remoto en
 3. Confirma que el dashboard local continúa funcionando y muestra eventos pendientes.
 4. Enciende nuevamente el WiFi.
 5. Espera el reintento automático y confirma que el estado cambie a `Sincronizado`.
-6. Comprueba que el evento aparezca en el Hub online.
+6. Comprueba que el evento y su posición aproximada aparezcan en el Hub online.
 
 El worker consulta la cola cada 2 segundos. Después de varios fallos usa backoff progresivo, con
-un máximo de 5 minutos. El botón `Actualizar` del dashboard refresca la pantalla; no fuerza ni
-omite el backoff.
+un máximo de 5 minutos. El Hub actualiza su lectura cada 15 segundos; no fuerza ni omite el
+backoff local.
+
+Se replican solicitudes, Centro, recursos, broadcasts, recibos y reportes de personas a salvo.
+Las coordenadas se redondean a tres decimales y los reportes de personas no incluyen nombre ni
+documento. La base local conserva el detalle exacto.
 
 ## Diagnóstico rápido
 
@@ -119,7 +122,7 @@ omite el backoff.
 | El LoRa Maestro no aparece | Revisa antena, cable de datos y `arduino-cli board list`. |
 | El Hub responde `401` | El token local y `WOKI_SYNC_TOKEN` de Vercel no coinciden. |
 | Los eventos siguen pendientes | Verifica internet con `curl https://woki-hub.vercel.app/api/health` y espera el próximo reintento. |
-| El dashboard local no abre | Confirma que `center.py` siga ejecutándose y abre `http://localhost:8081`. |
+| El dashboard local no abre | Confirma que `center.py` siga ejecutándose y abre `http://localhost:8080`. |
 
 No borres `center.db` para resolver un problema de sincronización: contiene la operación local y
 la cola durable pendiente.

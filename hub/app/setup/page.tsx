@@ -6,7 +6,7 @@ import { OnboardingWizard } from "./OnboardingWizard";
 
 export const metadata: Metadata = {
   title: "Preparar kit | WOKI",
-  description: "Guía visual para instalar y verificar un nodo de recurso WOKI.",
+  description: "Guía visual para instalar y verificar el Maestro y un recurso WOKI.",
 };
 
 export default function SetupPage() {
