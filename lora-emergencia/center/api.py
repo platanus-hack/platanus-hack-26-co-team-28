@@ -75,10 +75,11 @@ def optional_text(body, name, maximum, default=""):
 
 
 class CommandApi:
-    def __init__(self, store, gateway, demo=False, notify=None, sim=False, center_position=None):
+    def __init__(self, store, gateway, demo=False, notify=None, sim=False, center_position=None, public_demo=False):
         self.store = store
         self.gateway = gateway
         self.demo = demo
+        self.public_demo = public_demo
         # sim: modo demo-con-hardware. Lee el gateway real (SOS del rescatista por
         # LoRa) pero permite simular el operador de grua sin 3ra placa fisica.
         self.sim = sim or demo
@@ -159,6 +160,7 @@ class CommandApi:
             "gateway": bool(self.gateway and self.gateway.connected),
             "center_position": self.store.get_center_position(),
             "demo": self.demo,
+            "public_demo": self.public_demo,
             "metrics": {
                 "critical": sum(item["triage"]["priority"] == 0 for item in open_requests),
                 "pending": sum(item["state"] in {"PENDIENTE", "EN_REVISION", "ENVIO_INDETERMINADO"} for item in open_requests),

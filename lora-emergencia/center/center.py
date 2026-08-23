@@ -592,7 +592,7 @@ def main():
         }
     API = CommandApi(
         STORE, GATEWAY, args.demo, notify_change, sim=args.sim,
-        center_position=center_position,
+        center_position=center_position, public_demo=args.public_demo,
     )
 
     # Hilo que reenvia el estado a los rescatistas por radio (recupera avisos perdidos).

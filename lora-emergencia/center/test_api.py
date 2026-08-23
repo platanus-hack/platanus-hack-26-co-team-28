@@ -711,6 +711,10 @@ class HttpSafetyTests(unittest.TestCase):
                 "0.0.0.0", "secret", demo=True, public_demo=True
             )
 
+    def test_overview_exposes_public_demo_mode(self):
+        api = CommandApi(self.store, self.gateway, demo=True, public_demo=True)
+        self.assertTrue(api.overview()["public_demo"])
+
 
 if __name__ == "__main__":
     unittest.main()

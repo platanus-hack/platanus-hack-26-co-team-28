@@ -11,6 +11,7 @@ const titles = {
 };
 const state = {
   demo: false,
+  publicDemo: false,
   overview: null,
   loading: false,
   lastUpdate: 0,
@@ -142,13 +143,16 @@ async function getOverview() {
   state.overview = overview;
   state.offlineMap = offlineMap;
   state.demo = state.overview.demo;
+  state.publicDemo = Boolean(state.overview.public_demo);
   state.lastUpdate = Date.now();
   updateSyncStatus();
   document.querySelector("#simulator-nav").hidden = !state.demo;
   const connected = state.overview.gateway;
   document.querySelector("#connection-dot").classList.toggle("connected", connected);
-  document.querySelector("#connection-text").textContent = connected ? "Gateway conectado" : "Gateway desconectado";
-  document.querySelector("#live-badge").textContent = connected ? "En vivo" : "Centro local";
+  document.querySelector("#connection-text").textContent = state.publicDemo ? "Gateway simulado" : connected ? "Gateway conectado" : "Gateway desconectado";
+  document.querySelector("#live-badge").textContent = state.publicDemo ? "Demo pública" : connected ? "En vivo" : "Centro local";
+  document.querySelector("#api-token-button").hidden = state.publicDemo;
+  if (state.publicDemo) document.querySelector(".eyebrow").textContent = "Demo pública · datos sintéticos";
   return state.overview;
 }
 
