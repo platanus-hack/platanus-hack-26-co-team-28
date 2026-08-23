@@ -239,6 +239,22 @@ class CommandApi:
             raise ApiError(400, "direction inválida")
         return {"items": self.store.list_radio_events(direction, kind, node, bounded_limit(query))}
 
+    def _notify_citizen(self, request):
+        # Cierra el loop bidireccional: transmite al rescatista el estado de SU
+        # solicitud por LoRa (best-effort, sin exigir ACK). El rescatista lo
+        # muestra en el OLED y en el portal (/status). Frame: CENTRO|<nodo>|ST|<id>|<estado>.
+        if not self.gateway or not request:
+            return
+        node = request.get("node")
+        estado = request.get("state")
+        if not node or node == "CENTRO" or not estado:
+            return
+        try:
+            frame = RadioFrame("CENTRO", node, "ST", self.store.next_message_id(), (str(estado),))
+            self.gateway.send_broadcast(frame)
+        except Exception:
+            pass
+
     def dispatch(self, request_id, body):
         resource = required_text(body, "resource_node", 24)
         actor = optional_text(body, "actor", 64, "operador") or "operador"
@@ -269,6 +285,7 @@ class CommandApi:
         finally:
             if reserved:
                 self.store.release_dispatch(request_id, resource, previous_state)
+        self._notify_citizen(self.store.get_request(request_id))
         self.notify()
         return {"ok": True, "message_id": frame.message_id, "effective_priority": priority}
 
@@ -281,6 +298,7 @@ class CommandApi:
         except ValueError as exc:
             message = str(exc)
             raise ApiError(404 if message == "request not found" else 409, message)
+        self._notify_citizen(request)
         self.notify()
         return {"ok": True, "request": request}
 
@@ -346,5 +364,9 @@ class CommandApi:
             if frame.destination != "CENTRO":
                 raise ApiError(400, "frame debe dirigirse a CENTRO")
             results.append({"frame": frame.encode(), "result": self.store.ingest(frame, "-55", "8.5")})
+            # Acciones del operador de grua (ACC/ST) llevan el nodo del ciudadano y su
+            # secuencia en el payload. Al cambiar el estado, se lo notificamos al rescatista.
+            if frame.kind in ("ACC", "ST") and len(frame.payload) >= 2:
+                self._notify_citizen(self.store.get_request_by_node_seq(frame.payload[0], frame.payload[1]))
         self.notify()
         return {"ok": True, "results": results}

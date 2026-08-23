@@ -593,6 +593,20 @@ class CenterStore:
             row = self._db.execute("SELECT * FROM requests WHERE id=?", (request_id,)).fetchone()
         return dict(row) if row else None
 
+    def get_request_by_node_seq(self, node: str, seq):
+        # Busca la solicitud de un ciudadano por su nodo y su secuencia de origen.
+        # Lo usa el centro para notificarle al rescatista el estado de SU solicitud.
+        try:
+            seq_int = int(seq)
+        except (TypeError, ValueError):
+            return None
+        with self._lock:
+            row = self._db.execute(
+                "SELECT * FROM requests WHERE node=? AND seq=? ORDER BY id DESC LIMIT 1",
+                (node, seq_int),
+            ).fetchone()
+        return dict(row) if row else None
+
     def request_timeline(self, request_id: int):
         with self._lock:
             return [dict(row) for row in self._db.execute(

@@ -155,6 +155,29 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(timeline[-1]["event_type"], "DISPATCHED")
         self.assertEqual(timeline[-1]["actor"], "Ana")
 
+    def test_dispatch_notifies_citizen_over_radio(self):
+        # Cierra el loop bidireccional: al despachar, el centro transmite un ST
+        # al nodo del ciudadano con el estado nuevo, para que el rescatista lo vea.
+        request_id = self.store.list_requests()[0]["id"]
+        self.gateway.frames.clear()
+        self.api.dispatch(request_id, {"resource_node": "MEDICO01", "actor": "Ana", "reason": "ok"})
+        notif = [f for f in self.gateway.frames if f.kind == "ST" and f.destination == "CIVIL1"]
+        self.assertTrue(notif, "no se transmitio la notificacion ST al rescatista")
+        self.assertEqual(notif[-1].origin, "CENTRO")
+        self.assertEqual(notif[-1].payload[0], "DESPACHADA")
+
+    def test_operator_action_notifies_citizen_over_radio(self):
+        # En modo sim, la grua responde ACC por el simulador. El centro debe
+        # notificarle al rescatista el estado ACEPTADA.
+        sim_api = CommandApi(self.store, self.gateway, sim=True)
+        request_id = self.store.list_requests()[0]["id"]
+        self.api.dispatch(request_id, {"resource_node": "MEDICO01", "actor": "Ana", "reason": "ok"})
+        self.gateway.frames.clear()
+        sim_api.simulate("frames", {"frames": ["MEDICO01|CENTRO|ACC|99|CIVIL1|7"]})
+        notif = [f for f in self.gateway.frames if f.kind == "ST" and f.destination == "CIVIL1"]
+        self.assertTrue(notif, "no se notifico al rescatista tras ACC")
+        self.assertEqual(notif[-1].payload[0], "ACEPTADA")
+
     def test_human_actions_require_valid_transitions_and_are_audited(self):
         request_id = self.store.list_requests()[0]["id"]
 
