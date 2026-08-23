@@ -1,0 +1,303 @@
+"""Versioned HTTP API for the offline command center."""
+
+import time
+from urllib.parse import unquote
+
+from command_core import VALID_CATEGORIES, RadioFrame, clean_field
+from triage import triage_request, triage_requests
+
+
+REQUEST_STATES = {
+    "PENDIENTE", "EN_REVISION", "ENVIANDO", "ENVIO_INDETERMINADO", "DESPACHADA",
+    "ACEPTADA", "EN_CURSO", "RESUELTA", "CANCELADA",
+}
+RESOURCE_STATES = {"disponible", "reservado", "asignado", "enruta", "enlugar", "resuelta", "cancelada"}
+
+
+class ApiError(ValueError):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+
+
+def one(query, name, default=""):
+    return query.get(name, [default])[0]
+
+
+def bounded_limit(query, default=100, maximum=200):
+    try:
+        value = int(one(query, "limit", default))
+    except (TypeError, ValueError):
+        raise ApiError(400, "limit inválido")
+    if value < 1:
+        raise ApiError(400, "limit inválido")
+    return min(value, maximum)
+
+
+def numeric_id(value, label="id"):
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        raise ApiError(400, label + " inválido")
+    if result < 1:
+        raise ApiError(400, label + " inválido")
+    return result
+
+
+def required_text(body, name, maximum, minimum=1):
+    raw = body.get(name, "")
+    if not isinstance(raw, str):
+        raise ApiError(400, name + " inválido")
+    value = clean_field(raw, maximum).strip()
+    if len(value) < minimum:
+        raise ApiError(400, name + " es requerido")
+    return value
+
+
+def optional_text(body, name, maximum, default=""):
+    raw = body.get(name, default)
+    if not isinstance(raw, str):
+        raise ApiError(400, name + " inválido")
+    return clean_field(raw, maximum).strip()
+
+
+class CommandApi:
+    def __init__(self, store, gateway, demo=False, notify=None):
+        self.store = store
+        self.gateway = gateway
+        self.demo = demo
+        self.notify = notify or (lambda: None)
+
+    def _request(self, request_id):
+        request = self.store.get_request(request_id)
+        if not request:
+            raise ApiError(404, "solicitud no encontrada")
+        return request
+
+    def get(self, path, query):
+        parts = [unquote(part) for part in path.split("/") if part]
+        if parts == ["api", "v1", "overview"]:
+            return self.overview()
+        if parts == ["api", "v1", "requests"]:
+            return self.requests(query)
+        if len(parts) == 4 and parts[:3] == ["api", "v1", "requests"]:
+            request = self._request(numeric_id(parts[3], "request id"))
+            request["triage"] = triage_request(request, self.store.list_resources())
+            return request
+        if len(parts) == 5 and parts[:3] == ["api", "v1", "requests"] and parts[4] == "timeline":
+            request_id = numeric_id(parts[3], "request id")
+            self._request(request_id)
+            return {"items": self.store.request_timeline(request_id)}
+        if parts == ["api", "v1", "resources"]:
+            return self.resources(query)
+        if len(parts) == 4 and parts[:3] == ["api", "v1", "resources"]:
+            node = clean_field(parts[3], 24)
+            resource = self.store.get_resource(node)
+            if not resource:
+                raise ApiError(404, "recurso no encontrado")
+            return resource
+        if parts == ["api", "v1", "network"]:
+            return self.network()
+        if parts == ["api", "v1", "radio-events"]:
+            return self.radio_events(query)
+        if parts == ["api", "v1", "broadcasts"]:
+            return {"items": self.store.list_broadcasts(bounded_limit(query))}
+        if len(parts) == 4 and parts[:3] == ["api", "v1", "broadcasts"]:
+            broadcast = self.store.get_broadcast(numeric_id(parts[3], "broadcast id"))
+            if not broadcast:
+                raise ApiError(404, "broadcast no encontrado")
+            return broadcast
+        if parts == ["api", "v1", "safe-people"]:
+            query_text = clean_field(one(query, "q"), 80).strip()
+            return {"items": self.store.list_safe_people(query_text, bounded_limit(query))}
+        raise ApiError(404, "not found")
+
+    def post(self, path, body):
+        parts = [unquote(part) for part in path.split("/") if part]
+        if len(parts) == 5 and parts[:3] == ["api", "v1", "requests"] and parts[4] == "dispatch":
+            return self.dispatch(numeric_id(parts[3], "request id"), body)
+        if len(parts) == 5 and parts[:3] == ["api", "v1", "requests"] and parts[4] == "actions":
+            return self.action(numeric_id(parts[3], "request id"), body)
+        if parts == ["api", "v1", "broadcasts"]:
+            return self.broadcast(body)
+        if parts in (["api", "v1", "simulator", "frames"], ["api", "v1", "simulator", "scenarios"]):
+            if not self.demo:
+                raise ApiError(404, "not found")
+            return self.simulate(parts[-1], body)
+        raise ApiError(404, "not found")
+
+    def overview(self):
+        resources = self.store.list_resources(limit=200)
+        resource_counts = self.store.resource_counts()
+        open_requests = triage_requests(
+            self.store.list_requests(limit=None, open_only=True), self.store.list_resources()
+        )
+        radio = self.store.list_radio_events(limit=15)
+        return {
+            "gateway": bool(self.gateway and self.gateway.connected),
+            "demo": self.demo,
+            "metrics": {
+                "critical": sum(item["triage"]["priority"] == 0 for item in open_requests),
+                "pending": sum(item["state"] in {"PENDIENTE", "EN_REVISION", "ENVIO_INDETERMINADO"} for item in open_requests),
+                "available_resources": resource_counts["available"],
+                "open_requests": len(open_requests),
+            },
+            "requests": open_requests[:20],
+            "resources": resources,
+            "resources_total": resource_counts["total"],
+            "resources_truncated": resource_counts["total"] > len(resources),
+            "recent_activity": radio,
+        }
+
+    def requests(self, query):
+        state = clean_field(one(query, "state"), 24).upper()
+        category = clean_field(one(query, "category"), 24).upper()
+        priority_raw = one(query, "priority", "")
+        if state and state not in REQUEST_STATES:
+            raise ApiError(400, "state inválido")
+        if category and category not in VALID_CATEGORIES:
+            raise ApiError(400, "category inválida")
+        priority = None
+        if priority_raw != "":
+            try:
+                priority = int(priority_raw)
+            except ValueError:
+                raise ApiError(400, "priority inválida")
+            if priority not in range(4):
+                raise ApiError(400, "priority inválida")
+        query_text = clean_field(one(query, "q"), 80).strip()
+        resources = self.store.list_resources()
+        items = self.store.list_requests(state, category, priority, query_text, bounded_limit(query))
+        return {"items": triage_requests(items, resources), "count": len(items)}
+
+    def resources(self, query):
+        state = clean_field(one(query, "state"), 24).lower()
+        kind = clean_field(one(query, "kind"), 24).upper()
+        zone = clean_field(one(query, "zone"), 24).upper()
+        if state and state not in RESOURCE_STATES:
+            raise ApiError(400, "state inválido")
+        if kind and kind not in VALID_CATEGORIES and kind != "RECURSO":
+            raise ApiError(400, "kind inválido")
+        return {"items": self.store.list_resources(state, kind, zone, bounded_limit(query))}
+
+    def network(self):
+        events = self.store.list_radio_events(limit=200)
+        resources = self.store.list_resources(limit=200)
+        resource_counts = self.store.resource_counts()
+        return {
+            "gateway": {"connected": bool(self.gateway and self.gateway.connected)},
+            "nodes": resources,
+            "totals": {
+                "nodes": resource_counts["total"],
+                "rx": sum(item["direction"] == "IN" for item in events),
+                "tx": sum(item["direction"] == "OUT" for item in events),
+            },
+            "nodes_truncated": resource_counts["total"] > len(resources),
+        }
+
+    def radio_events(self, query):
+        direction = clean_field(one(query, "direction"), 4).upper()
+        kind = clean_field(one(query, "kind"), 24).upper()
+        node = clean_field(one(query, "node"), 24)
+        if direction and direction not in {"IN", "OUT"}:
+            raise ApiError(400, "direction inválida")
+        return {"items": self.store.list_radio_events(direction, kind, node, bounded_limit(query))}
+
+    def dispatch(self, request_id, body):
+        resource = required_text(body, "resource_node", 24)
+        actor = optional_text(body, "actor", 64, "operador") or "operador"
+        reason = optional_text(body, "reason", 240)
+        request = self._request(request_id)
+        priority = triage_request(request, self.store.list_resources())["priority"]
+        reserved = False
+        previous_state = request["state"]
+        try:
+            frame, _request = self.store.reserve_dispatch(request_id, resource, priority)
+            reserved = True
+            delivered, result = self.gateway.send_reliable(frame) if self.gateway else (False, "GATEWAY_OFFLINE")
+            if not delivered:
+                raise ApiError(503, result)
+            self.store.mark_dispatched(request_id, resource, frame, actor, reason)
+            reserved = False
+        finally:
+            if reserved:
+                self.store.release_dispatch(request_id, resource, previous_state)
+        self.notify()
+        return {"ok": True, "message_id": frame.message_id, "effective_priority": priority}
+
+    def action(self, request_id, body):
+        action = required_text(body, "action", 16).lower()
+        actor = required_text(body, "actor", 64)
+        reason = required_text(body, "reason", 240, 3)
+        try:
+            request = self.store.request_action(request_id, action, actor, reason)
+        except ValueError as exc:
+            message = str(exc)
+            raise ApiError(404 if message == "request not found" else 409, message)
+        self.notify()
+        return {"ok": True, "request": request}
+
+    def broadcast(self, body):
+        message = required_text(body, "message", 80)
+        scope_key = "scope" if "scope" in body else "audience"
+        scope = optional_text(body, scope_key, 24, "ALL").upper()
+        priority = optional_text(body, "priority", 12, "NORMAL").upper()
+        try:
+            expires_in = int(body.get("expires_in", 300))
+        except (TypeError, ValueError):
+            raise ApiError(400, "expires_in inválido")
+        if scope != "ALL" and not scope.startswith("ZONE:"):
+            raise ApiError(400, "scope inválido")
+        if priority not in {"NORMAL", "URGENT"} or not 60 <= expires_in <= 86400:
+            raise ApiError(400, "broadcast inválido")
+        frame = RadioFrame(
+            "CENTRO", "BCAST", "BC", self.store.next_message_id(),
+            (scope, priority, str(int(time.time()) + expires_in), message),
+        )
+        self.store.start_broadcast(frame)
+        try:
+            sent = bool(self.gateway and self.gateway.send_broadcast(frame))
+        except Exception:
+            sent = False
+        self.store.finish_broadcast(frame, sent)
+        self.notify()
+        if not sent:
+            raise ApiError(503, "GATEWAY_OFFLINE")
+        return {"ok": True, "message_id": frame.message_id}
+
+    def simulate(self, kind, body):
+        if kind == "scenarios":
+            scenario = required_text(body, "scenario", 32)
+            sequence = self.store.next_message_id()
+            scenarios = {
+                "critical-medical": [
+                    "SIM-CIVIL|CENTRO|SOS|{}|MEDICO|2|4.6712|-74.0530|Centro|persona inconsciente".format(sequence)
+                ],
+                "rescue": [
+                    "SIM-CIVIL|CENTRO|SOS|{}|RESCATE|2|4.6767|-74.0483|Norte|dos atrapados".format(sequence)
+                ],
+                "medical-resource": [
+                    "SIM-MEDICO|CENTRO|HB|{}|MEDICO|CENTRO|-|1".format(sequence),
+                    "SIM-MEDICO|CENTRO|POS|{}|4.6720|-74.0522|8|0|disponible".format(sequence + 1),
+                ],
+            }
+            if scenario not in scenarios:
+                raise ApiError(400, "scenario inválido")
+            raw_frames = scenarios[scenario]
+        else:
+            raw_frames = body.get("frames", [body.get("frame", "")])
+            if not isinstance(raw_frames, list) or not 1 <= len(raw_frames) <= 20:
+                raise ApiError(400, "frames inválidos")
+        results = []
+        for raw in raw_frames:
+            if not isinstance(raw, str) or len(raw) > 512:
+                raise ApiError(400, "frame inválido")
+            try:
+                frame = RadioFrame.parse(raw)
+            except ValueError as exc:
+                raise ApiError(400, str(exc))
+            if frame.destination != "CENTRO":
+                raise ApiError(400, "frame debe dirigirse a CENTRO")
+            results.append({"frame": frame.encode(), "result": self.store.ingest(frame, "-55", "8.5")})
+        self.notify()
+        return {"ok": True, "results": results}

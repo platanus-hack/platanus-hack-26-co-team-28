@@ -29,13 +29,13 @@ La Raspberry Pi contiene el command center. El TTGO central funciona como gatewa
 
 | Capa | Elección | Motivo |
 |---|---|---|
-| Radio y backend | Python + FastAPI + pyserial | Reutiliza el prototipo y simplifica la integración con USB serial |
+| Radio y backend | Python stdlib + pyserial opcional | Compatible con Python 3.9 y operación local sin servicios externos |
 | Persistencia | SQLite | Archivo local, sin servidor externo y apto para operación offline |
-| Interfaz | React + TypeScript | Adecuado para mapa, estados en vivo, filtros y flujos operativos |
-| Mapa | MapLibre con cartografía local | Capas de zonas, recursos, reportes y puntos operativos sin internet |
+| Interfaz | HTML, CSS y JavaScript vanilla | SPA local sin compilación, CDN ni conexión a internet |
+| Mapa | Esquema local de coordenadas | Ubicaciones observadas sin introducir aún zonas formales ni cartografía remota |
 | Despliegue | Raspberry Pi | Ejecuta aplicación, almacenamiento y servidor web local |
 
-El stack es una decisión de diseño inicial, no una implementación presente. Antes de construirlo deben cerrarse el protocolo LoRa y los flujos críticos.
+El servidor expone la API versionada bajo `/api/v1` y mantiene temporalmente los endpoints legacy del prototipo.
 
 ## Capacidades previstas
 
@@ -61,7 +61,7 @@ El stack es una decisión de diseño inicial, no una implementación presente. A
 
 ## Estado actual
 
-`center.py` ya conserva el estado en SQLite, opera sin CDN, recibe frames universales y puede despachar o emitir broadcasts mediante el gateway. El mapa actual es un esquema de coordenadas; la cartografía local sigue pendiente.
+`center.py` funciona como gateway y bootstrap HTTP; `command_core.py` conserva dominio y SQLite, `api.py` expone contratos versionados y `web/` contiene el dashboard offline. El mapa actual es un esquema de coordenadas; la cartografía local sigue pendiente.
 
 ## Simular triage sin hardware
 
@@ -71,6 +71,14 @@ python3 center.py --demo
 ```
 
 Abre `http://localhost:8080`. El demo carga solicitudes y recursos sintéticos, escala señales críticas sin reducir la prioridad reportada y recomienda el recurso compatible disponible más cercano. Toda asignación sigue requiriendo confirmación humana.
+
+Por defecto el servidor escucha únicamente en `127.0.0.1`. Para operar en una LAN se exige un token Bearer:
+
+```bash
+python3 center.py /dev/ttyUSB0 --host 0.0.0.0 --api-token 'token-largo-y-aleatorio'
+```
+
+Ingresa el mismo token con el botón **Token API** del dashboard. Se conserva solo en `sessionStorage` durante la pestaña actual. En modo autenticado el frontend usa polling autenticado porque `EventSource` nativo no permite enviar el header `Authorization`.
 
 Para ejecutar las pruebas:
 

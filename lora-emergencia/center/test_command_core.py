@@ -156,6 +156,37 @@ class CenterStoreTests(unittest.TestCase):
         self.assertEqual(self.store.state()["requests"][0]["state"], "ENVIO_INDETERMINADO")
         self.assertEqual(self.store.state()["resources"][0]["state"], "asignado")
 
+    def test_restart_release_then_redispatch_preserves_exclusivity(self):
+        self.add_sos()
+        self.add_resource("MEDICO01", "MEDICO")
+        request_id = self.store.state()["requests"][0]["id"]
+        self.store.reserve_dispatch(request_id, "MEDICO01")
+        self.store.close()
+        self.store = CenterStore(self.db_path)
+
+        with self.assertRaisesRegex(ValueError, "not pending"):
+            self.store.reserve_dispatch(request_id, "MEDICO01")
+        released = self.store.request_action(request_id, "release", "Ana", "Radio verificada sin recepción")
+        self.assertEqual(released["state"], "EN_REVISION")
+        self.assertIsNone(released["resource_node"])
+        self.assertEqual(self.store.get_resource("MEDICO01")["state"], "disponible")
+        frame, _request = self.store.reserve_dispatch(request_id, "MEDICO01")
+        self.assertEqual(frame.destination, "MEDICO01")
+        self.assertEqual(self.store.request_timeline(request_id)[-1]["event_type"], "HUMAN_RELEASE")
+
+    def test_human_cancel_rejects_active_remote_assignments(self):
+        self.add_sos()
+        self.add_resource("MEDICO01", "MEDICO")
+        request_id = self.store.state()["requests"][0]["id"]
+        frame, _request = self.store.reserve_dispatch(request_id, "MEDICO01")
+        self.store.mark_dispatched(request_id, "MEDICO01", frame)
+
+        with self.assertRaisesRegex(ValueError, "invalid state transition"):
+            self.store.request_action(request_id, "cancel", "Ana", "Cancelar desde centro")
+
+        self.assertEqual(self.store.get_request(request_id)["state"], "DESPACHADA")
+        self.assertEqual(self.store.get_resource("MEDICO01")["state"], "asignado")
+
     def test_broadcast_receipts_are_deduplicated_per_node(self):
         broadcast = RadioFrame("CENTRO", "BCAST", "BC", 30, ("ALL", "URGENT", "9999999999", "Evacuar"))
         self.store.record_broadcast(broadcast)

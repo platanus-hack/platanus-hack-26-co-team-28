@@ -6,6 +6,7 @@ import math
 import re
 import time
 import unicodedata
+from typing import List, Optional, Tuple
 
 
 RESOURCE_MAX_AGE_SECONDS = 10 * 60
@@ -35,7 +36,7 @@ def normalize_text(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
-def parse_coordinate(value: object, minimum: float, maximum: float) -> float | None:
+def parse_coordinate(value: object, minimum: float, maximum: float) -> Optional[float]:
     try:
         coordinate = float(value)
     except (TypeError, ValueError):
@@ -43,13 +44,13 @@ def parse_coordinate(value: object, minimum: float, maximum: float) -> float | N
     return coordinate if math.isfinite(coordinate) and minimum <= coordinate <= maximum else None
 
 
-def request_location(request: dict) -> tuple[float, float] | None:
+def request_location(request: dict) -> Optional[Tuple[float, float]]:
     lat = parse_coordinate(request.get("lat"), -90, 90)
     lon = parse_coordinate(request.get("lon"), -180, 180)
     return (lat, lon) if lat is not None and lon is not None else None
 
 
-def distance_km(first: tuple[float, float], second: tuple[float, float]) -> float:
+def distance_km(first: Tuple[float, float], second: Tuple[float, float]) -> float:
     lat1, lon1, lat2, lon2 = map(math.radians, (*first, *second))
     delta_lat = lat2 - lat1
     delta_lon = lon2 - lon1
@@ -58,7 +59,7 @@ def distance_km(first: tuple[float, float], second: tuple[float, float]) -> floa
     return 6371 * 2 * math.atan2(math.sqrt(value), math.sqrt(1 - value))
 
 
-def compatible_resources(request: dict, resources: list[dict], now: float) -> list[dict]:
+def compatible_resources(request: dict, resources: List[dict], now: float) -> List[dict]:
     category = str(request.get("category", request.get("cat", ""))).upper()
     origin = request_location(request)
     candidates = []
@@ -89,7 +90,7 @@ def compatible_resources(request: dict, resources: list[dict], now: float) -> li
     )
 
 
-def triage_request(request: dict, resources: list[dict], now: float | None = None) -> dict:
+def triage_request(request: dict, resources: List[dict], now: Optional[float] = None) -> dict:
     now = time.time() if now is None else now
     reported_priority = min(3, max(0, int(request.get("priority", request.get("pri", 2)))))
     category = str(request.get("category", request.get("cat", ""))).upper()
@@ -112,7 +113,8 @@ def triage_request(request: dict, resources: list[dict], now: float | None = Non
         alerts.append("Sin coordenadas válidas")
     if not text:
         alerts.append("Sin lugar ni detalle")
-    is_pending = request.get("state", request.get("estado", "PENDIENTE")) == "PENDIENTE"
+    request_state = request.get("state", request.get("estado", "PENDIENTE"))
+    is_pending = request_state in {"PENDIENTE", "EN_REVISION"} and not request.get("resource_node")
     candidates = compatible_resources(request, resources, now) if is_pending else []
     if is_pending and not candidates:
         alerts.append("Sin recursos compatibles disponibles y recientes")
@@ -126,7 +128,7 @@ def triage_request(request: dict, resources: list[dict], now: float | None = Non
     }
 
 
-def triage_requests(requests: list[dict], resources: list[dict], now: float | None = None) -> list[dict]:
+def triage_requests(requests: List[dict], resources: List[dict], now: Optional[float] = None) -> List[dict]:
     now = time.time() if now is None else now
     triaged = []
     for request in requests:

@@ -5,7 +5,9 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
+import json
 from dataclasses import dataclass
+from typing import Optional, Tuple
 
 
 VALID_CATEGORIES = {"GRUA", "MEDICO", "RESCATE", "AGUA", "FUEGO"}
@@ -121,7 +123,8 @@ class CenterStore:
                     priority TEXT NOT NULL,
                     message TEXT NOT NULL,
                     expires_at INTEGER NOT NULL,
-                    created_at REAL NOT NULL
+                    created_at REAL NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'SENT'
                 );
                 CREATE TABLE IF NOT EXISTS broadcast_receipts (
                     broadcast_id INTEGER NOT NULL,
@@ -129,6 +132,24 @@ class CenterStore:
                     received_at REAL NOT NULL,
                     PRIMARY KEY(broadcast_id, node)
                 );
+                CREATE TABLE IF NOT EXISTS request_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id INTEGER NOT NULL,
+                    event_type TEXT NOT NULL,
+                    actor TEXT NOT NULL DEFAULT '',
+                    reason TEXT NOT NULL DEFAULT '',
+                    from_state TEXT,
+                    to_state TEXT,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    created_at REAL NOT NULL,
+                    FOREIGN KEY(request_id) REFERENCES requests(id)
+                );
+                CREATE INDEX IF NOT EXISTS request_events_request_id_created_at
+                    ON request_events(request_id, created_at, id);
+                CREATE INDEX IF NOT EXISTS requests_priority_created_at
+                    ON requests(priority, created_at);
+                CREATE INDEX IF NOT EXISTS radio_events_created_at_id
+                    ON radio_events(created_at DESC, id DESC);
                 CREATE TABLE IF NOT EXISTS metadata (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
@@ -140,11 +161,30 @@ class CenterStore:
                 self._db.execute(
                     "ALTER TABLE resources ADD COLUMN position_seen_at REAL NOT NULL DEFAULT 0"
                 )
+            broadcast_columns = {row[1] for row in self._db.execute("PRAGMA table_info(broadcasts)")}
+            if "status" not in broadcast_columns:
+                self._db.execute(
+                    "ALTER TABLE broadcasts ADD COLUMN status TEXT NOT NULL DEFAULT 'SENT'"
+                )
             self._db.execute(
                 "UPDATE requests SET state='ENVIO_INDETERMINADO',updated_at=? WHERE state='ENVIANDO'",
                 (time.time(),),
             )
             self._db.execute("UPDATE resources SET state='asignado' WHERE state='reservado'")
+
+    def _record_request_event(
+        self, request_id: int, event_type: str, actor: str = "", reason: str = "",
+        from_state: Optional[str] = None, to_state: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> None:
+        self._db.execute(
+            "INSERT INTO request_events(request_id,event_type,actor,reason,from_state,to_state,metadata_json,created_at) "
+            "VALUES(?,?,?,?,?,?,?,?)",
+            (
+                request_id, clean_field(event_type, 32), clean_field(actor, 64), clean_field(reason, 240),
+                from_state, to_state, json.dumps(metadata or {}, separators=(",", ":")), time.time(),
+            ),
+        )
 
     def next_message_id(self) -> int:
         with self._lock, self._db:
@@ -202,6 +242,11 @@ class CenterStore:
                     clean_field(rssi), clean_field(snr), now, now,
                 ),
             )
+            if cursor.rowcount:
+                self._record_request_event(
+                    cursor.lastrowid, "INGESTED", frame.origin, "Solicitud recibida por radio",
+                    None, "PENDIENTE", {"message_id": frame.message_id},
+                )
         return "CREATED" if cursor.rowcount else "DUPLICATE"
 
     def _ingest_safe(self, frame: RadioFrame, rssi: str, snr: str) -> str:
@@ -239,6 +284,10 @@ class CenterStore:
             self._db.execute(
                 "UPDATE requests SET state='ACEPTADA',updated_at=? WHERE id=?", (time.time(), request["id"])
             )
+            self._record_request_event(
+                request["id"], "RESOURCE_ACCEPTED", frame.origin, "Aceptación operacional del recurso",
+                request["state"], "ACEPTADA", {"message_id": frame.message_id},
+            )
         return "UPDATED"
 
     def _ingest_status(self, frame: RadioFrame, _rssi: str, _snr: str) -> str:
@@ -265,6 +314,11 @@ class CenterStore:
             )
             resource_state = "disponible" if new_state in TERMINAL_STATES else frame.payload[2]
             self._db.execute("UPDATE resources SET state=? WHERE node=?", (resource_state, frame.origin))
+            self._record_request_event(
+                request["id"], "RESOURCE_STATUS", frame.origin, "Estado reportado por el recurso",
+                request["state"], new_state,
+                {"resource_state": frame.payload[2], "message_id": frame.message_id},
+            )
         return "UPDATED"
 
     def _ingest_position(self, frame: RadioFrame, rssi: str, snr: str) -> str:
@@ -323,21 +377,40 @@ class CenterStore:
             )
         return "UPDATED"
 
-    def record_broadcast(self, frame: RadioFrame) -> None:
+    def start_broadcast(self, frame: RadioFrame) -> None:
         if frame.kind != "BC" or len(frame.payload) < 4:
             raise ValueError("invalid broadcast frame")
         scope, priority, expires_at, message = frame.payload[:4]
         with self._lock, self._db:
             self._db.execute(
-                "INSERT INTO broadcasts(message_id,scope,priority,message,expires_at,created_at) "
-                "VALUES(?,?,?,?,?,?)",
+                "INSERT INTO broadcasts(message_id,scope,priority,message,expires_at,created_at,status) "
+                "VALUES(?,?,?,?,?,?, 'SENDING')",
                 (frame.message_id, scope, priority, message, int(expires_at), time.time()),
             )
-        self.record_event("OUT", frame, frame.encode(), "SENT_UNCONFIRMED")
+
+    def finish_broadcast(self, frame: RadioFrame, sent: bool) -> None:
+        status = "SENT" if sent else "FAILED"
+        with self._lock, self._db:
+            cursor = self._db.execute(
+                "UPDATE broadcasts SET status=? WHERE message_id=? AND status='SENDING'",
+                (status, frame.message_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("broadcast is not sending")
+            self._db.execute(
+                "INSERT INTO radio_events(direction,origin,destination,kind,message_id,raw,result,created_at) "
+                "VALUES('OUT',?,?,?,?,?,?,?)",
+                (frame.origin, frame.destination, frame.kind, frame.message_id, frame.encode(), status, time.time()),
+            )
+
+    def record_broadcast(self, frame: RadioFrame) -> None:
+        """Compatibility helper for callers that already completed transmission."""
+        self.start_broadcast(frame)
+        self.finish_broadcast(frame, True)
 
     def _build_dispatch(
-        self, request_id: int, resource_node: str, effective_priority: int | None = None
-    ) -> tuple[RadioFrame, sqlite3.Row]:
+        self, request_id: int, resource_node: str, effective_priority: Optional[int] = None
+    ) -> Tuple[RadioFrame, sqlite3.Row]:
         resource_node = clean_field(resource_node, 24)
         if not resource_node:
             raise ValueError("resource node is required")
@@ -345,7 +418,7 @@ class CenterStore:
             request = self._db.execute("SELECT * FROM requests WHERE id=?", (request_id,)).fetchone()
             if not request:
                 raise ValueError("request not found")
-            if request["state"] != "PENDIENTE":
+            if request["state"] not in {"PENDIENTE", "EN_REVISION"}:
                 raise ValueError("request is not pending")
             resource = self._db.execute("SELECT * FROM resources WHERE node=?", (resource_node,)).fetchone()
             if not resource:
@@ -369,13 +442,13 @@ class CenterStore:
             return frame, request
 
     def reserve_dispatch(
-        self, request_id: int, resource_node: str, effective_priority: int | None = None
-    ) -> tuple[RadioFrame, sqlite3.Row]:
+        self, request_id: int, resource_node: str, effective_priority: Optional[int] = None
+    ) -> Tuple[RadioFrame, sqlite3.Row]:
         with self._lock, self._db:
             frame, request = self._build_dispatch(request_id, resource_node, effective_priority)
             request_cursor = self._db.execute(
                 "UPDATE requests SET state='ENVIANDO',resource_node=?,updated_at=? "
-                "WHERE id=? AND state='PENDIENTE'",
+                "WHERE id=? AND state IN ('PENDIENTE','EN_REVISION')",
                 (resource_node, time.time(), request_id),
             )
             resource_cursor = self._db.execute(
@@ -386,19 +459,24 @@ class CenterStore:
                 raise ValueError("request or resource was reserved concurrently")
             return frame, request
 
-    def release_dispatch(self, request_id: int, resource_node: str) -> None:
+    def release_dispatch(self, request_id: int, resource_node: str, previous_state: str = "PENDIENTE") -> None:
+        if previous_state not in {"PENDIENTE", "EN_REVISION"}:
+            previous_state = "PENDIENTE"
         with self._lock, self._db:
             self._db.execute(
-                "UPDATE requests SET state='PENDIENTE',resource_node=NULL,updated_at=? "
+                "UPDATE requests SET state=?,resource_node=NULL,updated_at=? "
                 "WHERE id=? AND state='ENVIANDO' AND resource_node=?",
-                (time.time(), request_id, resource_node),
+                (previous_state, time.time(), request_id, resource_node),
             )
             self._db.execute(
                 "UPDATE resources SET state='disponible' WHERE node=? AND state='reservado'",
                 (resource_node,),
             )
 
-    def mark_dispatched(self, request_id: int, resource_node: str, frame: RadioFrame) -> None:
+    def mark_dispatched(
+        self, request_id: int, resource_node: str, frame: RadioFrame,
+        actor: str = "operador", reason: str = "",
+    ) -> None:
         with self._lock, self._db:
             cursor = self._db.execute(
                 "UPDATE requests SET state='DESPACHADA',resource_node=?,updated_at=? "
@@ -413,7 +491,170 @@ class CenterStore:
             )
             if resource_cursor.rowcount != 1:
                 raise ValueError("resource reservation was lost")
+            self._record_request_event(
+                request_id, "DISPATCHED", actor, reason, "ENVIANDO", "DESPACHADA",
+                {"resource_node": resource_node, "message_id": frame.message_id},
+            )
         self.record_event("OUT", frame, frame.encode(), "DELIVERED")
+
+    def request_action(self, request_id: int, action: str, actor: str, reason: str) -> dict:
+        transitions = {
+            "review": ({"PENDIENTE"}, "EN_REVISION"),
+            "release": ({"ENVIO_INDETERMINADO"}, "EN_REVISION"),
+            "cancel": ({"PENDIENTE", "EN_REVISION"}, "CANCELADA"),
+            "resolve": ({"ACEPTADA", "EN_CURSO"}, "RESUELTA"),
+        }
+        if action not in transitions:
+            raise ValueError("invalid action")
+        allowed, to_state = transitions[action]
+        with self._lock, self._db:
+            request = self._db.execute("SELECT * FROM requests WHERE id=?", (request_id,)).fetchone()
+            if not request:
+                raise ValueError("request not found")
+            if request["state"] not in allowed:
+                raise ValueError("invalid state transition")
+            if action == "cancel" and request["resource_node"]:
+                raise ValueError("active resource assignment must be released or confirmed by radio")
+            if action == "release":
+                resource_node = request["resource_node"]
+                if not resource_node:
+                    raise ValueError("indeterminate dispatch has no resource assignment")
+                self._db.execute(
+                    "UPDATE resources SET state='disponible' WHERE node=? AND state='asignado'",
+                    (resource_node,),
+                )
+            self._db.execute(
+                "UPDATE requests SET state=?,resource_node=CASE WHEN ?='release' THEN NULL ELSE resource_node END,updated_at=? WHERE id=?",
+                (to_state, action, time.time(), request_id),
+            )
+            if to_state in TERMINAL_STATES and request["resource_node"]:
+                self._db.execute(
+                    "UPDATE resources SET state='disponible' WHERE node=?", (request["resource_node"],)
+                )
+            self._record_request_event(
+                request_id, "HUMAN_" + action.upper(), actor, reason,
+                request["state"], to_state, {},
+            )
+        return self.get_request(request_id)
+
+    def list_requests(self, state="", category="", priority=None, query="", limit=100, open_only=False):
+        clauses, values = [], []
+        if state:
+            clauses.append("state=?")
+            values.append(state)
+        if category:
+            clauses.append("category=?")
+            values.append(category)
+        if priority is not None:
+            clauses.append("priority=?")
+            values.append(priority)
+        if query:
+            clauses.append("(node LIKE ? OR place LIKE ? OR detail LIKE ? OR resource_node LIKE ?)")
+            term = "%" + query + "%"
+            values.extend([term] * 4)
+        if open_only:
+            clauses.append("state NOT IN ('RESUELTA','CANCELADA')")
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        limit_sql = ""
+        if limit is not None:
+            values.append(limit)
+            limit_sql = " LIMIT ?"
+        with self._lock:
+            return [dict(row) for row in self._db.execute(
+                "SELECT * FROM requests" + where + " ORDER BY priority,created_at" + limit_sql, values
+            )]
+
+    def get_request(self, request_id: int):
+        with self._lock:
+            row = self._db.execute("SELECT * FROM requests WHERE id=?", (request_id,)).fetchone()
+        return dict(row) if row else None
+
+    def request_timeline(self, request_id: int):
+        with self._lock:
+            return [dict(row) for row in self._db.execute(
+                "SELECT * FROM request_events WHERE request_id=? ORDER BY created_at,id", (request_id,)
+            )]
+
+    def list_resources(self, state="", kind="", zone="", limit=None):
+        clauses, values = [], []
+        for column, value in (("state", state), ("kind", kind), ("zone", zone)):
+            if value:
+                clauses.append(column + "=?")
+                values.append(value)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        limit_sql = ""
+        if limit is not None:
+            values.append(limit)
+            limit_sql = " LIMIT ?"
+        with self._lock:
+            return [dict(row) for row in self._db.execute(
+                "SELECT * FROM resources" + where + " ORDER BY node" + limit_sql, values
+            )]
+
+    def resource_counts(self):
+        with self._lock:
+            total = self._db.execute("SELECT COUNT(*) FROM resources").fetchone()[0]
+            available = self._db.execute(
+                "SELECT COUNT(*) FROM resources WHERE state='disponible'"
+            ).fetchone()[0]
+        return {"total": total, "available": available}
+
+    def get_resource(self, node: str):
+        with self._lock:
+            row = self._db.execute("SELECT * FROM resources WHERE node=?", (node,)).fetchone()
+        return dict(row) if row else None
+
+    def list_radio_events(self, direction="", kind="", node="", limit=100):
+        clauses, values = [], []
+        if direction:
+            clauses.append("direction=?")
+            values.append(direction)
+        if kind:
+            clauses.append("kind=?")
+            values.append(kind)
+        if node:
+            clauses.append("(origin=? OR destination=?)")
+            values.extend([node, node])
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        values.append(limit)
+        with self._lock:
+            return [dict(row) for row in self._db.execute(
+                "SELECT * FROM radio_events" + where + " ORDER BY created_at DESC,id DESC LIMIT ?", values
+            )]
+
+    def list_broadcasts(self, limit=100):
+        with self._lock:
+            return [dict(row) for row in self._db.execute(
+                "SELECT b.*,COUNT(r.node) AS received_count FROM broadcasts b "
+                "LEFT JOIN broadcast_receipts r ON r.broadcast_id=b.message_id "
+                "GROUP BY b.message_id ORDER BY b.created_at DESC LIMIT ?", (limit,)
+            )]
+
+    def get_broadcast(self, message_id: int):
+        with self._lock:
+            row = self._db.execute("SELECT * FROM broadcasts WHERE message_id=?", (message_id,)).fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            result["receipts"] = [dict(item) for item in self._db.execute(
+                "SELECT node,received_at FROM broadcast_receipts WHERE broadcast_id=? ORDER BY received_at",
+                (message_id,),
+            )]
+        result["received_count"] = len(result["receipts"])
+        return result
+
+    def list_safe_people(self, query="", limit=100):
+        values = []
+        where = ""
+        if query:
+            where = " WHERE name LIKE ? OR document LIKE ? OR place LIKE ? OR node LIKE ?"
+            term = "%" + query + "%"
+            values.extend([term] * 4)
+        values.append(limit)
+        with self._lock:
+            return [dict(row) for row in self._db.execute(
+                "SELECT * FROM safe_people" + where + " ORDER BY created_at DESC LIMIT ?", values
+            )]
 
     def state(self) -> dict:
         with self._lock:

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Grua GRUA07</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif;background:#0b0f14;color:#e7e9ee}.hd{background:#1570ef;padding:16px;text-align:center}.hd h1{margin:0;font-size:20px}.hd .st{font-size:13px;opacity:.9;margin-top:4px}.wrap{max-width:520px;margin:0 auto;padding:14px}.conn{width:100%;padding:14px;border:0;border-radius:12px;background:#067647;color:#fff;font-size:17px;font-weight:700;margin-bottom:12px}.card{background:#141a22;border:1px solid #232c39;border-radius:14px;padding:16px;margin-bottom:12px}.cat{font-size:18px;font-weight:800}.p0{color:#ff6b6b}.p1{color:#ffb454}.meta{color:#8a93a3;font-size:13px;margin:6px 0}.loc{font-size:14px;margin:6px 0}.state{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:#232c39}.btn{width:100%;padding:15px;border:0;border-radius:12px;font-size:17px;font-weight:700;color:#fff;margin-top:10px}.accept{background:#067647}.route{background:#1570ef}.place{background:#7c3aed}.resolve{background:#b45309}.empty{color:#8a93a3;text-align:center;padding:30px}.error{color:#ff8a8a;text-align:center;margin-bottom:12px}
+  </style>
+</head>
+<body>
+  <div class="hd"><h1>App del operador · GRUA07</h1><div class="st" id="status">desconectado</div></div>
+  <main class="wrap">
+    <button class="conn" id="connect" type="button">Conectar mi grua</button>
+    <div id="error" class="error"></div>
+    <div id="list"></div>
+  </main>
+  <script>
+    const resource = "GRUA07";
+    const token = sessionStorage.getItem("apiToken") || "";
+    let connected = false;
+    let messageId = Date.now() % 1000000;
+    const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[char]);
+
+    async function api(path, options = {}) {
+      const headers = new Headers(options.headers || {});
+      if (token) headers.set("Authorization", `Bearer ${token}`);
+      const response = await fetch(path, {...options, headers});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo completar la accion");
+      return data;
+    }
+
+    function frame(kind, payload) {
+      messageId += 1;
+      return `${resource}|CENTRO|${kind}|${messageId}|${payload.join("|")}`;
+    }
+
+    async function sendFrame(kind, payload) {
+      await api("/api/v1/simulator/frames", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({frame: frame(kind, payload)}),
+      });
+    }
+
+    async function connect() {
+      try {
+        await sendFrame("HB", ["GRUA", "NORTE", "-", "1"]);
+        connected = true;
+        document.querySelector("#status").textContent = "en servicio · esperando asignaciones";
+        document.querySelector("#connect").hidden = true;
+        document.querySelector("#error").textContent = "";
+        tick();
+      } catch (error) {
+        document.querySelector("#error").textContent = error.message;
+      }
+    }
+
+    async function update(kind, node, sequence, state = "") {
+      try {
+        await sendFrame(kind, state ? [node, sequence, state] : [node, sequence]);
+        document.querySelector("#error").textContent = "";
+        tick();
+      } catch (error) {
+        document.querySelector("#error").textContent = error.message;
+      }
+    }
+
+    function actions(request) {
+      const node = JSON.stringify(request.node);
+      const sequence = JSON.stringify(String(request.seq));
+      if (request.estado === "DESPACHADA") return `<button class="btn accept" onclick='update("ACC",${node},${sequence})'>Aceptar el viaje</button>`;
+      if (request.estado === "ACEPTADA") return `<button class="btn route" onclick='update("ST",${node},${sequence},"enruta")'>Voy en camino</button>`;
+      if (request.estado === "EN_CURSO") return `<button class="btn place" onclick='update("ST",${node},${sequence},"enlugar")'>Llegue al lugar</button><button class="btn resolve" onclick='update("ST",${node},${sequence},"resuelta")'>Rescate resuelto</button>`;
+      return "";
+    }
+
+    async function tick() {
+      if (!connected) return;
+      try {
+        const data = await api("/api/state");
+        const requests = (data.requests || []).filter(request => request.operador === resource && !["RESUELTA", "CANCELADA"].includes(request.estado));
+        document.querySelector("#list").innerHTML = requests.length ? requests.map(request => {
+          const location = request.lat && request.lon ? `${request.lat}, ${request.lon}` : request.lugar || "sin ubicacion";
+          return `<section class="card"><div class="cat p${request.pri}">${escapeHtml(request.cat)} · prioridad ${request.pri}</div><div class="loc">${escapeHtml(location)}</div><div class="meta">${escapeHtml(request.detalle || "-")} · de ${escapeHtml(request.node)}</div><span class="state">${escapeHtml(request.estado)}</span>${actions(request)}</section>`;
+        }).join("") : '<div class="empty">En servicio. Sin asignaciones por ahora.</div>';
+      } catch (error) {
+        document.querySelector("#error").textContent = error.message;
+      }
+    }
+
+    document.querySelector("#connect").addEventListener("click", connect);
+    setInterval(tick, 2000);
+  </script>
+</body>
+</html>

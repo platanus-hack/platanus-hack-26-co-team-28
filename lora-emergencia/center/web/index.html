@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Centro LoRa</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Saltar al contenido</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navegación principal">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Centro LoRa</span></div>
+      <nav id="nav">
+        <a href="#overview" data-route="overview">Overview</a>
+        <a href="#requests" data-route="requests">Solicitudes</a>
+        <a href="#resources" data-route="resources">Recursos</a>
+        <a href="#network" data-route="network">Red LoRa</a>
+        <a href="#broadcasts" data-route="broadcasts">Broadcasts</a>
+        <a href="#safe-people" data-route="safe-people">Personas a salvo</a>
+        <a href="#simulator" data-route="simulator" id="simulator-nav" hidden>Simulador</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="connection-dot" class="status-dot"></span>
+        <span id="connection-text">Conectando…</span>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Operación offline</p>
+          <h1 id="page-title">Overview</h1>
+        </div>
+        <div class="topbar-status">
+          <button id="api-token-button" class="button" type="button">Token API</button>
+          <span id="live-badge" class="badge">Actualizando</span>
+          <time id="clock"></time>
+        </div>
+      </header>
+      <main id="content" tabindex="-1" aria-live="polite"></main>
+    </div>
+  </div>
+
+  <aside id="drawer" class="drawer" aria-label="Detalle de solicitud" aria-hidden="true">
+    <div class="drawer-head"><h2>Detalle</h2><button class="icon-button" id="close-drawer" aria-label="Cerrar detalle">×</button></div>
+    <div id="drawer-content"></div>
+  </aside>
+  <div id="scrim" class="scrim" hidden></div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
