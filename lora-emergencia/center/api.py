@@ -71,6 +71,8 @@ class CommandApi:
         self.sim = sim or demo
         self.notify = notify or (lambda: None)
         self.center_position = center_position
+        if center_position is not None:
+            self.store.set_center_position(center_position)
 
     def _request(self, request_id):
         request = self.store.get_request(request_id)
@@ -124,6 +126,8 @@ class CommandApi:
             return self.action(numeric_id(parts[3], "request id"), body)
         if parts == ["api", "v1", "broadcasts"]:
             return self.broadcast(body)
+        if parts == ["api", "v1", "center-position"]:
+            return self.set_center_position(body)
         if parts in (["api", "v1", "simulator", "frames"], ["api", "v1", "simulator", "scenarios"]):
             if not self.sim:
                 raise ApiError(404, "not found")
@@ -139,7 +143,7 @@ class CommandApi:
         radio = self.store.list_radio_events(limit=15)
         return {
             "gateway": bool(self.gateway and self.gateway.connected),
-            "center_position": self.center_position,
+            "center_position": self.store.get_center_position(),
             "demo": self.demo,
             "metrics": {
                 "critical": sum(item["triage"]["priority"] == 0 for item in open_requests),
@@ -153,6 +157,31 @@ class CommandApi:
             "resources_truncated": resource_counts["total"] > len(resources),
             "recent_activity": radio,
         }
+
+    def set_center_position(self, body):
+        try:
+            lat = float(body.get("lat"))
+            lon = float(body.get("lon"))
+            accuracy_raw = body.get("accuracy")
+            accuracy = None if accuracy_raw in (None, "") else float(accuracy_raw)
+        except (TypeError, ValueError):
+            raise ApiError(400, "coordenadas inválidas")
+        source = str(body.get("source", "")).upper()
+        if not -90 <= lat <= 90 or not -180 <= lon <= 180:
+            raise ApiError(400, "coordenadas fuera de rango")
+        if accuracy is not None and (accuracy < 0 or accuracy > 100000):
+            raise ApiError(400, "precisión inválida")
+        if source not in {"NAVEGADOR", "MANUAL", "CONFIGURADA"}:
+            raise ApiError(400, "fuente de ubicación inválida")
+        position = {
+            "lat": lat, "lon": lon, "accuracy": accuracy,
+            "source": source, "label": "Centro de comando",
+            "captured_at": time.time(),
+        }
+        self.store.set_center_position(position)
+        self.center_position = position
+        self.notify()
+        return position
 
     def requests(self, query):
         state = clean_field(one(query, "state"), 24).upper()

@@ -58,6 +58,7 @@ main { max-width: 1500px; padding: 24px; margin: 0 auto; }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
 .panel-head { min-height: 62px; padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .panel-head h3 { margin: 0; font-size: 17px; }
+.panel-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .panel-body { padding: 16px; }
 .filters { padding: 12px; display: flex; flex-wrap: wrap; gap: 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); margin-bottom: 16px; }
 label { color: #333; font-size: 12px; font-weight: 550; }
@@ -138,6 +139,9 @@ tbody tr.clickable:hover { background: #fafafa; }
   .map { min-height: 270px; }
   .key-values { grid-template-columns: 1fr; gap: 2px; }
   .key-values dd { margin-bottom: 8px; }
+  .panel-head { align-items: flex-start; flex-direction: column; }
+  .panel-actions { width: 100%; }
+  .panel-actions .button { flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

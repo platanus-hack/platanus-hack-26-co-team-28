@@ -197,6 +197,29 @@ class CenterStore:
             )
             return value
 
+    def set_center_position(self, position: dict) -> dict:
+        value = json.dumps(position, separators=(",", ":"))
+        with self._lock, self._db:
+            self._db.execute(
+                "INSERT INTO metadata(key,value) VALUES('center_position',?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (value,),
+            )
+        return position
+
+    def get_center_position(self) -> Optional[dict]:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT value FROM metadata WHERE key='center_position'"
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            value = json.loads(row[0])
+        except (TypeError, ValueError):
+            return None
+        return value if isinstance(value, dict) else None
+
     def record_event(self, direction: str, frame: RadioFrame, raw: str, result: str = "") -> None:
         with self._lock, self._db:
             self._db.execute(

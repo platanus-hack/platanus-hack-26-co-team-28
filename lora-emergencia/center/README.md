@@ -71,6 +71,15 @@ python3 center.py /dev/ttyUSB0 --port 8081 --center-lat 4.6767 --center-lon -74.
 
 La interfaz la identifica como `CONFIGURADA`, distinta de una posición observada por GPS. Si el centro se desplaza, debe actualizarse manualmente o integrarse un módulo GPS externo.
 
+### Capturar la ubicación desde la pantalla del Raspberry
+
+1. Abre el dashboard en Chromium usando `http://localhost:8081`.
+2. En **Esquema de ubicaciones**, pulsa **Usar ubicación actual**.
+3. Autoriza el permiso de ubicación y revisa coordenadas y precisión antes de confirmar.
+4. La posición queda guardada en `center.db`; Internet puede desconectarse después.
+
+`localhost` es importante porque el navegador permite geolocalización en ese contexto local. La Raspberry no incorpora GPS: Chromium puede resolver la ubicación mediante servicios de red cuando hay Internet, pero también puede responder que no está disponible. En ese caso usa **Ingresar coordenadas** o conecta el módulo GPS externo. El dashboard siempre muestra la fuente (`NAVEGADOR`, `MANUAL` o `CONFIGURADA`) y nunca presenta una coordenada configurada como GPS real.
+
 ## Simular triage sin hardware
 
 ```bash

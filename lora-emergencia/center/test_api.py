@@ -73,6 +73,25 @@ class ApiTests(unittest.TestCase):
             self.api.get("/api/v1/resources/MISSING", {})
         self.assertEqual(context.exception.status, 404)
 
+    def test_center_position_is_validated_and_persisted(self):
+        saved = self.api.post("/api/v1/center-position", {
+            "lat": 4.6501, "lon": -74.1012, "accuracy": 35.5,
+            "source": "NAVEGADOR",
+        })
+
+        self.assertEqual(saved["source"], "NAVEGADOR")
+        self.assertEqual(saved["accuracy"], 35.5)
+        self.assertEqual(self.store.get_center_position(), saved)
+        self.assertEqual(self.api.overview()["center_position"], saved)
+        with self.assertRaises(ApiError):
+            self.api.post("/api/v1/center-position", {
+                "lat": 95, "lon": -74, "source": "MANUAL",
+            })
+        with self.assertRaises(ApiError):
+            self.api.post("/api/v1/center-position", {
+                "lat": 4, "lon": -74, "source": "IP",
+            })
+
     def test_operational_read_models_and_broadcast_receipts(self):
         request_id = self.store.list_requests()[0]["id"]
         broadcast = self.api.post(

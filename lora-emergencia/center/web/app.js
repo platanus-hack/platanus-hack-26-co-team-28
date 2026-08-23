@@ -111,12 +111,62 @@ async function renderOverview() {
       ${metric(metrics.critical, "Solicitudes críticas")}${metric(metrics.pending, "Decisiones pendientes")}${metric(metrics.available_resources, "Recursos disponibles")}${metric(metrics.open_requests, "Solicitudes abiertas")}
     </section>
     <div class="grid">
-      <section class="panel"><div class="panel-head"><h3>Esquema de ubicaciones</h3><span class="muted">${data.center_position ? "Centro configurado · posiciones observadas" : "Centro sin GPS · posiciones observadas"}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}</span></div><div id="map" class="map"><span class="map-note">Esquema offline · sin cartografía formal</span></div></section>
+      <section class="panel"><div class="panel-head"><div><h3>Esquema de ubicaciones</h3><span class="muted">${centerPositionLabel(data.center_position)}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}</span></div><div class="panel-actions"><button id="locate-center" class="button" type="button">Usar ubicación actual</button><button id="manual-center" class="button" type="button">Ingresar coordenadas</button></div></div><div id="map" class="map"><span class="map-note">Esquema offline · sin cartografía formal</span></div></section>
       <section class="panel"><div class="panel-head"><h3>Cola priorizada</h3><a class="button" href="#requests">Ver todas</a></div><div class="list">${data.requests.length ? data.requests.slice(0, 7).map(requestListItem).join("") : empty("Sin solicitudes abiertas")}</div></section>
     </div>
     <section class="panel" style="margin-top:16px"><div class="panel-head"><h3>Actividad reciente de radio</h3><a class="button" href="#network">Abrir red</a></div>${radioTable(data.recent_activity)}</section>`;
   plotMap(data.requests, data.resources, data.center_position);
+  document.querySelector("#locate-center").addEventListener("click", locateCenter);
+  document.querySelector("#manual-center").addEventListener("click", enterCenterPosition);
   bindRequestRows();
+}
+
+function centerPositionLabel(position) {
+  if (!position) return "Centro sin ubicación · posiciones observadas";
+  const accuracy = position.accuracy == null ? "" : ` · ±${Math.round(position.accuracy)} m`;
+  return `Centro: ${escapeHtml(position.source.toLowerCase())}${accuracy} · ${ago(position.captured_at)}`;
+}
+
+async function saveCenterPosition(lat, lon, accuracy, source) {
+  await api("/api/v1/center-position", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lat, lon, accuracy, source }),
+  });
+  notify("Ubicación del centro guardada para uso offline");
+  await renderOverview();
+}
+
+function locateCenter() {
+  if (!navigator.geolocation) {
+    notify("Este navegador no ofrece ubicación; ingrésala manualmente", true);
+    return;
+  }
+  const button = document.querySelector("#locate-center");
+  button.disabled = true;
+  button.textContent = "Obteniendo ubicación…";
+  navigator.geolocation.getCurrentPosition(async (position) => {
+    const { latitude, longitude, accuracy } = position.coords;
+    const summary = `${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${Math.round(accuracy)} m)`;
+    if (!confirm(`Ubicación obtenida:\n${summary}\n\n¿Guardar como posición del centro?`)) {
+      button.disabled = false; button.textContent = "Usar ubicación actual"; return;
+    }
+    try { await saveCenterPosition(latitude, longitude, accuracy, "NAVEGADOR"); }
+    catch (error) { notify(error.message, true); button.disabled = false; button.textContent = "Usar ubicación actual"; }
+  }, (error) => {
+    const reasons = { 1: "Permiso de ubicación denegado", 2: "Ubicación no disponible", 3: "La ubicación tardó demasiado" };
+    notify(`${reasons[error.code] || "No se pudo obtener la ubicación"}. Puedes ingresarla manualmente.`, true);
+    button.disabled = false; button.textContent = "Usar ubicación actual";
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+}
+
+async function enterCenterPosition() {
+  const lat = prompt("Latitud del centro", state.overview?.center_position?.lat ?? "");
+  if (lat === null) return;
+  const lon = prompt("Longitud del centro", state.overview?.center_position?.lon ?? "");
+  if (lon === null) return;
+  if (!confirm(`Guardar ${lat}, ${lon} como ubicación manual del centro?`)) return;
+  try { await saveCenterPosition(lat, lon, null, "MANUAL"); }
+  catch (error) { notify(error.message, true); }
 }
 
 function metric(value, label) { return `<div class="metric"><strong>${value}</strong><span>${escapeHtml(label)}</span></div>`; }
