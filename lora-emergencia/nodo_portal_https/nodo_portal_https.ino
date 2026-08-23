@@ -317,10 +317,25 @@ static esp_err_t hReportForm(httpd_req_t* req) {
   httpd_resp_send(req, p.c_str(), HTTPD_RESP_USE_STRLEN);
   return ESP_OK;
 }
-// HTTP catch-all: cualquier pagina/dominio cae aqui (DNS cautivo). Devuelve una landing
-// (200) con los botones para ABRIR EN EL NAVEGADOR REAL. No auto-redirige, porque el
-// WebView del portal cautivo de Android bloquea el GPS: el usuario debe saltar a Chrome.
+// HTTP catch-all con apertura automatica del portal cautivo.
+// Estrategia (probada en nodo_portal.ino) SIN perder el GPS:
+//  - Sondeos de Android/Windows (generate_204, gen_204, ncsi.txt, connecttest.txt):
+//    responde 302 -> Location a la landing. Asi el telefono ABRE el portal solo.
+//  - iOS (hotspot-detect.html) y cualquier otra ruta: sirve la landing (200), que
+//    el CNA de Apple muestra sola. La landing tiene el boton "Abrir en Chrome" (GPS).
 static esp_err_t hHttp(httpd_req_t* req) {
+  String uri = String(req->uri);
+  bool sondeoAndroid =
+      uri.indexOf("generate_204") >= 0 || uri.indexOf("gen_204") >= 0 ||
+      uri.indexOf("ncsi.txt") >= 0 || uri.indexOf("connecttest.txt") >= 0 ||
+      uri.indexOf("redirect") >= 0 || uri.indexOf("canonical.html") >= 0;
+  if (sondeoAndroid) {
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+    httpd_resp_set_type(req, "text/plain");
+    httpd_resp_send(req, "", 0);   // cuerpo vacio; el telefono abre el portal solo
+    return ESP_OK;
+  }
   httpd_resp_set_type(req, "text/html; charset=utf-8");
   String p = pageHttp();
   httpd_resp_send(req, p.c_str(), HTTPD_RESP_USE_STRLEN);
