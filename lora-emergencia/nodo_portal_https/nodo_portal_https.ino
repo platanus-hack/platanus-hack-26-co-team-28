@@ -194,27 +194,38 @@ static const char* CSS =
 // iOS y Android. Debajo, botones de respaldo que reportan SIN GPS si el HTTPS falla.
 String pageHttp() {
   String https = "https://" + String(DOMAIN) + "/";
-  String intent = "intent://" + String(DOMAIN) + "/#Intent;scheme=https;package=com.android.chrome;end";
-  // Landing de transicion: AUTO-REDIRIGE a la version segura (HTTPS con GPS y el UI
-  // rediseñado). meta refresh + JS. Boton grande de respaldo. Diseño dark coherente.
+  String intent = "intent://" + String(DOMAIN) + "/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + https + ";end";
+  // Landing (fase 2): el JS detecta el navegador por User-Agent y da la via correcta
+  // al GPS por SO. Android: auto-redirige a HTTPS + boton intent a Chrome. iOS: guia
+  // a Safari (el CNA bloquea el GPS). Desktop: auto-redirige a HTTPS.
   String h = "<!doctype html><html lang='es'><head><meta charset='utf-8'>";
   h += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  h += "<meta http-equiv='refresh' content='0;url=" + https + "'>";
   h += "<style>body{margin:0;background:#0C0C0D;color:#F1F3F4;font:16px system-ui,-apple-system,sans-serif}";
   h += ".w{max-width:440px;margin:0 auto;min-height:100vh;padding:22px 16px;display:flex;flex-direction:column}";
   h += ".hd{background:#FF4438;color:#fff;padding:16px;border-radius:14px;text-align:center;font-weight:800;font-size:20px}";
-  h += ".sp{flex:1}.msg{color:#9AA0A6;text-align:center;margin:18px 0}";
-  h += "a.go{display:block;background:#FF4438;color:#fff;padding:22px;border-radius:20px;text-decoration:none;text-align:center;font-weight:800;font-size:22px;box-shadow:0 14px 34px -12px rgba(255,68,56,.7)}";
-  h += "a.go small{display:block;font-weight:500;font-size:13px;opacity:.95;margin-top:4px}";
-  h += "a.alt{display:block;color:#9AA0A6;text-align:center;margin-top:16px;text-decoration:none;font-size:14px}</style></head><body>";
-  h += "<div class='w'><div class='hd'>PUNTO DE AYUDA 911</div>";
-  h += "<div class='msg'>Abriendo la pagina para pedir ayuda con tu ubicacion…</div>";
-  h += "<div class='sp'></div>";
-  h += "<a class='go' href='" + https + "'>ABRIR Y PEDIR AYUDA<small>Envia tu ubicacion GPS</small></a>";
-  h += "<a class='alt' href='" + intent + "'>Android: ¿no abre? Toca aqui para abrir en Chrome</a>";
-  h += "<div class='sp'></div></div>";
-  h += "<script>location.replace('" + https + "');</script>";
-  h += "</body></html>";
+  h += ".sp{flex:1}.msg{color:#9AA0A6;text-align:center;margin:18px 0;font-size:15px}";
+  h += ".step{background:#161719;border:1px solid #2E3033;border-radius:12px;padding:12px 14px;margin:8px 0;font-size:14px}";
+  h += ".step b{color:#4C9AFF}";
+  h += "a.go{display:block;background:#FF4438;color:#fff;padding:22px;border-radius:20px;text-decoration:none;text-align:center;font-weight:800;font-size:20px;box-shadow:0 14px 34px -12px rgba(255,68,56,.7)}";
+  h += "a.go small{display:block;font-weight:500;font-size:13px;opacity:.95;margin-top:4px}</style></head><body>";
+  h += "<div class='w'><div class='hd'>PUNTO DE AYUDA 911</div><div id='c'></div>";
+  h += "<div class='sp'></div><div id='b'></div><div class='sp'></div></div>";
+  h += "<script>";
+  h += "var HTTPS='" + https + "';var INTENT=\"" + intent + "\";";
+  h += "var ua=navigator.userAgent,isiOS=/iPhone|iPad|iPod/i.test(ua),isAnd=/Android/i.test(ua);";
+  h += "var c=document.getElementById('c'),b=document.getElementById('b');";
+  h += "if(isiOS){";
+  h += " c.innerHTML=\"<div class='msg'>Para pedir ayuda con tu ubicacion GPS, abre <b>Safari</b>:</div>\"+";
+  h += "  \"<div class='step'><b>1.</b> Toca <b>Cancelar</b> arriba a la derecha.</div>\"+";
+  h += "  \"<div class='step'><b>2.</b> Elige <b>Usar sin conexion</b>.</div>\"+";
+  h += "  \"<div class='step'><b>3.</b> Abre <b>Safari</b> y entra a <b>ayuda.homiapp.xyz</b></div>\";";
+  h += " b.innerHTML=\"<a class='go' href='\"+HTTPS+\"'>Intentar abrir aqui<small>Si no pide ubicacion, usa los pasos de arriba</small></a>\";";
+  h += "}else if(isAnd){";
+  h += " c.innerHTML=\"<div class='msg'>Abriendo la pagina segura para tu ubicacion…</div>\";";
+  h += " b.innerHTML=\"<a class='go' href='\"+INTENT+\"'>ABRIR EN CHROME<small>Envia tu ubicacion GPS</small></a>\";";
+  h += " setTimeout(function(){location.replace(HTTPS);},400);";
+  h += "}else{location.replace(HTTPS);}";
+  h += "</script></body></html>";
   return h;
 }
 
@@ -283,25 +294,40 @@ static esp_err_t hReportForm(httpd_req_t* req) {
   httpd_resp_send(req, p.c_str(), HTTPD_RESP_USE_STRLEN);
   return ESP_OK;
 }
-// HTTP catch-all con apertura automatica del portal cautivo.
-// Estrategia (probada en nodo_portal.ino) SIN perder el GPS:
-//  - Sondeos de Android/Windows (generate_204, gen_204, ncsi.txt, connecttest.txt):
-//    responde 302 -> Location a la landing. Asi el telefono ABRE el portal solo.
-//  - iOS (hotspot-detect.html) y cualquier otra ruta: sirve la landing (200), que
-//    el CNA de Apple muestra sola. La landing tiene el boton "Abrir en Chrome" (GPS).
+// HTTP catch-all: UN SOLO handler que decide por el header Host / la URI del sondeo.
+// Mejor practica (nodogsplash, openNDS): detectar el SO por Host, no por User-Agent,
+// porque el Host del sondeo es estable y siempre presente.
+//  - iOS (captive.apple.com / hotspot-detect.html): 200 con la landing. El CNA de
+//    Apple la muestra sola. La landing detecta el navegador y guia al GPS.
+//  - Android/Windows (generate_204, gen_204, ncsi.txt, connecttest.txt, etc.): 302
+//    directo al portal HTTPS. Android abre el WebView mostrando el portal rediseñado.
+//  - Cualquier otra ruta: la landing (200), que auto-redirige al portal HTTPS.
 static esp_err_t hHttp(httpd_req_t* req) {
   String uri = String(req->uri);
-  bool sondeoAndroid =
+  char host[64] = {0};
+  size_t hl = httpd_req_get_hdr_value_len(req, "Host");
+  if (hl > 0 && hl < sizeof(host)) httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
+  String h = String(host);
+
+  bool ios = h.indexOf("captive.apple.com") >= 0 ||
+             uri.indexOf("hotspot-detect") >= 0 || uri.indexOf("success.html") >= 0;
+  bool androidWin =
       uri.indexOf("generate_204") >= 0 || uri.indexOf("gen_204") >= 0 ||
       uri.indexOf("ncsi.txt") >= 0 || uri.indexOf("connecttest.txt") >= 0 ||
-      uri.indexOf("redirect") >= 0 || uri.indexOf("canonical.html") >= 0;
-  if (sondeoAndroid) {
+      uri.indexOf("redirect") >= 0 || uri.indexOf("canonical.html") >= 0 ||
+      h.indexOf("connectivitycheck") >= 0 || h.indexOf("gstatic") >= 0 ||
+      h.indexOf("msftconnecttest") >= 0 || h.indexOf("msftncsi") >= 0;
+
+  if (androidWin && !ios) {
+    // Android/Windows: 302 directo al portal HTTPS (el WebView lo muestra).
+    String loc = "https://" + String(DOMAIN) + "/";
     httpd_resp_set_status(req, "302 Found");
-    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
+    httpd_resp_set_hdr(req, "Location", loc.c_str());
     httpd_resp_set_type(req, "text/plain");
-    httpd_resp_send(req, "", 0);   // cuerpo vacio; el telefono abre el portal solo
+    httpd_resp_send(req, "", 0);
     return ESP_OK;
   }
+  // iOS y catch-all: la landing (200) con guia al GPS por navegador.
   httpd_resp_set_type(req, "text/html; charset=utf-8");
   String p = pageHttp();
   httpd_resp_send(req, p.c_str(), HTTPD_RESP_USE_STRLEN);

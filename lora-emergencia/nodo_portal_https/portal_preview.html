@@ -121,6 +121,7 @@ input.text{width:100%;padding:14px;font-size:16px;border:1.5px solid var(--borde
       <div><div class="pl" id="here-pl">Obteniendo tu ubicación GPS…</div><div class="co" id="here-co"></div></div>
       <span class="tag" id="here-tag">GPS</span>
     </div>
+    <div id="escape" style="display:none;background:#161719;border:1.5px solid #4C9AFF;border-radius:13px;padding:13px 14px;margin-top:8px;font-size:13.5px;line-height:1.5"></div>
     <input class="text" id="lugar" placeholder="¿Sin GPS? Escribe el lugar (ej: Cra 12 # 4-30)" style="display:none">
     <button class="btn danger" id="send" onclick="enviar()" disabled><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>Pedir ayuda</button>
     <button class="btn ghost" onclick="go('home')">Cancelar</button>
@@ -203,7 +204,21 @@ function pedirGps(box){
 function gpsFalla(box){
   var el=document.getElementById(box), pl=document.getElementById(box+'-pl'), co=document.getElementById(box+'-co');
   el.className='here err'; pl.textContent='Sin GPS. Escribe el lugar abajo.'; co.textContent='';
-  if(box==='here'){ document.getElementById('lugar').style.display='block'; revisarListo(); }
+  if(box==='here'){ document.getElementById('lugar').style.display='block'; mostrarEscape(); revisarListo(); }
+}
+// Si el GPS falla (tipico del WebView del portal cautivo), guia al navegador real.
+function mostrarEscape(){
+  var e=document.getElementById('escape'); if(!e) return;
+  var ua=navigator.userAgent, isiOS=/iPhone|iPad|iPod/i.test(ua), isAnd=/Android/i.test(ua);
+  var HTTPS='https://ayuda.homiapp.xyz/';
+  var INTENT='intent://ayuda.homiapp.xyz/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+HTTPS+';end';
+  if(isAnd){
+    e.innerHTML='<b style="color:#4C9AFF">¿Quieres enviar tu ubicación GPS exacta?</b><br>Abre esta página en Chrome:<br><a href="'+INTENT+'" style="display:block;margin-top:8px;background:#4C9AFF;color:#04162e;padding:12px;border-radius:10px;text-decoration:none;text-align:center;font-weight:700">Abrir en Chrome</a>';
+    e.style.display='block';
+  }else if(isiOS){
+    e.innerHTML='<b style="color:#4C9AFF">¿Quieres enviar tu ubicación GPS exacta?</b><br>Toca <b>Cancelar</b> arriba, elige <b>Usar sin conexión</b>, abre <b>Safari</b> y entra a <b>ayuda.homiapp.xyz</b>';
+    e.style.display='block';
+  }
 }
 
 document.getElementById('cats').addEventListener('click', function(e){
