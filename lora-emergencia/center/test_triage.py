@@ -56,11 +56,21 @@ class TriagePriorityTests(unittest.TestCase):
         self.assertEqual(result["reasons"], ["Prioridad crítica reportada por el nodo"])
 
     def test_applies_signals_only_to_their_category(self):
-        medical = triage_request(request(category="MEDICO", detail="persona atrapada"), [], NOW)
-        tow = triage_request(request(category="GRUA", priority=3, detail="persona atrapada consciente"), [], NOW)
+        # La señal de GRUA (vía bloqueada) no aplica a MEDICO: conserva su prioridad.
+        medical = triage_request(request(category="MEDICO", detail="escombro en via"), [], NOW)
+        # GRUA escala por "escombro en via". Ya NO responde a "atrapado" (eso es RESCATE).
+        tow = triage_request(request(category="GRUA", priority=3, detail="escombro en via"), [], NOW)
 
         self.assertEqual(medical["priority"], 2)
         self.assertEqual(tow["priority"], 1)
+
+    def test_grua_no_longer_triggers_on_trapped_person(self):
+        # "atrapado" es de RESCATE. En GRUA no debe escalar: se elimina el solapamiento.
+        tow = triage_request(request(category="GRUA", priority=3, detail="persona atrapada consciente"), [], NOW)
+        rescue = triage_request(request(category="RESCATE", priority=3, detail="persona atrapada"), [], NOW)
+
+        self.assertEqual(tow["priority"], 3)
+        self.assertEqual(rescue["priority"], 0)
 
     def test_orders_queue_by_effective_priority_then_arrival(self):
         requests = [

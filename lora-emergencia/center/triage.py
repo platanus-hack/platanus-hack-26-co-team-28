@@ -11,6 +11,11 @@ from typing import List, Optional, Tuple
 
 RESOURCE_MAX_AGE_SECONDS = 10 * 60
 
+# Reglas de escalada de severidad. La severidad la asigna el CENTRO, no el
+# ciudadano. Cada categoria es una SITUACION. Las frases van normalizadas
+# (minusculas, sin acentos) porque el texto se pasa por normalize_text.
+# GRUA = via o vehiculo bloqueado. NO incluye "atrapado" (eso es RESCATE): asi
+# se elimina el solapamiento GRUA/RESCATE.
 TRIAGE_RULES = {
     "MEDICO": (
         (0, ("inconsciente",), "persona inconsciente"),
@@ -19,13 +24,17 @@ TRIAGE_RULES = {
     ),
     "RESCATE": (
         (0, ("atrapado", "atrapada", "atrapados", "atrapadas"), "personas atrapadas"),
-        (0, ("derrumbe",), "derrumbe"),
+        (0, ("derrumbe", "bajo escombros"), "derrumbe"),
     ),
     "FUEGO": (
         (0, ("gente dentro", "personas dentro"), "personas dentro del incendio"),
+        (0, ("olor a gas", "fuga de gas"), "riesgo de gas"),
+    ),
+    "AGUA": (
+        (0, ("atrapado por el agua", "arrastrado por el agua"), "persona atrapada por el agua"),
     ),
     "GRUA": (
-        (1, ("atrapado", "atrapada", "atrapados", "atrapadas"), "persona atrapada consciente"),
+        (1, ("via bloqueada", "escombro en via", "arbol caido"), "vía bloqueada, retrasa el acceso"),
     ),
 }
 
