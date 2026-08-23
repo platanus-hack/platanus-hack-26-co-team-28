@@ -84,8 +84,11 @@ input.text,textarea.text{width:100%;padding:14px;font-size:16px;border:1.5px sol
 .tl-step.done .node{background:var(--safe);border-color:var(--safe)}.tl-step.done .line{background:var(--safe)}
 .tl-step.done .node svg{width:11px;height:11px;color:#05130b}
 .tl-step.now .node{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 22%,var(--surface))}
+.tl-step.cancel .node{border-color:var(--danger);background:color-mix(in srgb,var(--danger) 22%,var(--surface))}
+.tl-step.cancel .node svg{width:11px;height:11px;color:var(--danger)}
 .tl-step .t{font-weight:700;font-size:14.5px}
 .tl-step.pending .t{color:var(--muted);opacity:.7}
+.tl-step.cancel .t{color:var(--danger)}
 .tl-step .d{font-size:12.5px;color:var(--muted);margin-top:1px}
 /* Pantallas angostas (iPhone SE, Androids de 360px o menos): reduce paddings y
    alturas para que nada se desborde ni se corte. */
@@ -395,6 +398,15 @@ function nivelDeEstado(est){
   if(est.indexOf('GESTION')>=0||est==='EN_REVISION') return 2;
   return 1; // RECIBIDA / PENDIENTE / sin dato
 }
+function esCancelada(est){ return (est||'').toUpperCase().indexOf('CANCEL')>=0; }
+// Cancelar NO es "mas avance" en el timeline lineal (Recibida->...->Resuelto):
+// es una salida. Por eso reemplaza el timeline entero por un paso propio, en
+// vez de intentar encajarlo en un nivel 1-4 (donde antes se confundia con
+// "Recibida", sin avisar al ciudadano que su pedido se cancelo).
+function renderCancelada(){
+  var tl=document.getElementById('tl'); if(!tl) return;
+  tl.innerHTML = "<div class='tl-step cancel'><div class='rail'><div class='node'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round'><path d='M6 6l12 12M18 6L6 18'/></svg></div></div><div><div class='t'>Solicitud cancelada</div><div class='d'>El puesto de mando canceló este pedido. Si sigues necesitando ayuda, pide de nuevo.</div></div></div>";
+}
 function renderTimeline(nivel){
   var tl=document.getElementById('tl'); if(!tl) return;
   var html='';
@@ -412,7 +424,8 @@ function iniciarSeguimiento(){
   if(seguimiento) clearInterval(seguimiento);
   var poll=function(){
     fetch('/status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(s){
-      renderTimeline(nivelDeEstado(s.estado));
+      if(esCancelada(s.estado)) renderCancelada();
+      else renderTimeline(nivelDeEstado(s.estado));
     }).catch(function(){});
   };
   poll();
