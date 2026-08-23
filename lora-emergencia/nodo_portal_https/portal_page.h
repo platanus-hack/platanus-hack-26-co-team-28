@@ -306,17 +306,21 @@ async function enviar(){
 // LoRa cuando el operador prioriza, la grua acepta, va en ruta o resuelve.
 var seguimiento=null, horaEnvio='';
 var PASOS=[
-  {t:'Tu pedido salió', d:'recibido en el puesto de mando'},
-  {t:'Asignando equipo', d:'el mando busca al más cercano'},
-  {t:'En camino', d:'el equipo va hacia ti'},
+  {t:'Recibida', d:'el puesto de mando recibió tu solicitud'},
+  {t:'En proceso', d:'un operador está gestionando tu caso'},
+  {t:'Grúa asignada', d:'asignaron una grúa a tu caso'},
+  {t:'En camino', d:'la grúa va hacia ti'},
   {t:'Te atendieron', d:'caso resuelto'}
 ];
+// Mapea el estado que manda el centro (etiqueta amigable, o el codigo interno de
+// respaldo) al paso del timeline que ve el ciudadano.
 function nivelDeEstado(est){
   est=(est||'').toUpperCase();
-  if(est==='RESUELTA') return 4;
-  if(est==='EN_CURSO'||est==='ENLUGAR') return 3;
-  if(est==='DESPACHADA'||est==='ACEPTADA') return 2;
-  return 1; // PENDIENTE / EN_REVISION / sin dato
+  if(est==='RESUELTA') return 5;
+  if(est.indexOf('CAMINO')>=0||est==='ACEPTADA'||est==='EN_CURSO'||est==='ENLUGAR') return 4;
+  if(est.indexOf('ASIGNADA')>=0||est==='DESPACHADA') return 3;
+  if(est.indexOf('GESTION')>=0||est==='EN_REVISION') return 2;
+  return 1; // RECIBIDA / PENDIENTE / sin dato
 }
 function renderTimeline(nivel){
   var tl=document.getElementById('tl'); if(!tl) return;

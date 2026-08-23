@@ -720,12 +720,14 @@ async function openRequest(id) {
   try {
     const [request, timeline] = await Promise.all([api(`/api/v1/requests/${id}`), api(`/api/v1/requests/${id}/timeline`)]);
     const triage = request.triage;
+    // El operador elige de la lista de recursos COMPATIBLES y disponibles (el
+    // candado del backend exige que el tipo del recurso coincida con la categoría).
     const canDispatch = ["PENDIENTE", "EN_REVISION"].includes(request.state) && !request.resource_node && triage.candidates.length;
     document.querySelector("#drawer-content").innerHTML = `
       <section class="detail-section"><h3>Solicitud #${request.id}</h3><dl class="key-values"><dt>Categoría</dt><dd>${escapeHtml(request.category)}</dd><dt>Estado</dt><dd>${stateBadge(request.state)}</dd><dt>Origen</dt><dd class="mono">${escapeHtml(request.node)} / ${request.seq}</dd><dt>Lugar</dt><dd>${escapeHtml(request.place || "Sin lugar")}</dd><dt>GPS</dt><dd>${validCoordinate(request.lat, request.lon) ? `<span class="mono">${escapeHtml(request.lat)}, ${escapeHtml(request.lon)}</span> · <a href="#overview" class="link">Ver en el mapa</a>` : "Sin GPS"}</dd><dt>Detalle</dt><dd>${escapeHtml(request.detail || "Sin detalle")}</dd><dt>Radio</dt><dd class="mono">RSSI ${escapeHtml(request.rssi || "—")} · SNR ${escapeHtml(request.snr || "—")}</dd></dl></section>
       <section class="detail-section"><h3>Triage explicable</h3><div class="review"><div class="list-line">${priorityBadge(triage.priority)} <span class="muted">Reportada: ${request.priority}</span></div><p>${triage.reasons.map(escapeHtml).join(" · ")}</p>${triage.alerts.length ? `<p class="badge warning">${triage.alerts.map(escapeHtml).join(" · ")}</p>` : ""}</div></section>
       <section class="detail-section"><h3>Candidatos</h3>${triage.candidates.length ? `<div class="list">${triage.candidates.map((item) => `<div class="list-item"><strong class="mono">${escapeHtml(item.node)}</strong><div class="cell-sub">${item.distance_km == null ? "Posición no reciente" : `${item.distance_km} km`} · contacto hace ${item.last_seen_seconds} s</div></div>`).join("")}</div>` : empty("Sin candidatos elegibles")}</section>
-      ${canDispatch ? dispatchForm(request, triage.recommended_resource.node) : ""}
+      ${canDispatch ? dispatchForm(request, triage.candidates, triage.recommended_resource.node) : ""}
       ${humanActions(request)}
       <section class="detail-section"><h3>Timeline auditable</h3>${timeline.items.length ? `<div class="timeline">${timeline.items.map((item) => `<div class="timeline-item"><strong>${escapeHtml(item.event_type)}</strong><div>${escapeHtml(item.from_state || "Inicio")} → ${escapeHtml(item.to_state || "Sin cambio")}</div><div class="cell-sub">${escapeHtml(item.actor || "sistema")} · ${escapeHtml(item.reason || "Sin motivo")} · ${formatDate(item.created_at)}</div></div>`).join("")}</div>` : empty("Sin eventos")}</section>`;
     document.querySelector("#dispatch-form")?.addEventListener("submit", submitDispatch);
@@ -736,12 +738,19 @@ async function openRequest(id) {
     document.querySelector("#close-drawer").focus();
   } catch (error) { notify(error.message, true); }
 }
-function dispatchForm(request, suggested) {
-  return `<section class="detail-section"><h3>Autorizar despacho</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">Nodo recurso</label><input id="resource-node" name="resource_node" value="${escapeHtml(suggested)}" required maxlength="24"></div><div class="field"><label for="dispatch-actor">Operador</label><input id="dispatch-actor" name="actor" required maxlength="64"></div><div class="field"><label for="dispatch-reason">Motivo</label><textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Transmitir despacho</button></div></form></section>`;
+function dispatchForm(request, candidates, suggested) {
+  // El operador ELIGE la unidad de la lista de disponibles y compatibles (la más
+  // cercana primero; la recomendada por el triage viene pre-seleccionada).
+  const options = candidates.map((c) => {
+    const dist = c.distance_km == null ? "posición no reciente" : `${c.distance_km} km`;
+    const selected = c.node === suggested ? " selected" : "";
+    return `<option value="${escapeHtml(c.node)}"${selected}>${escapeHtml(c.node)} · ${escapeHtml(dist)}</option>`;
+  }).join("");
+  return `<section class="detail-section"><h3>Solicitar grúa</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">Grúa disponible y compatible</label><select id="resource-node" name="resource_node" required>${options}</select></div><div class="field"><label for="dispatch-actor">Operador</label><input id="dispatch-actor" name="actor" required maxlength="64"></div><div class="field"><label for="dispatch-reason">Motivo</label><textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Solicitar a la grúa</button></div></form></section>`;
 }
 function humanActions(request) {
   const actions = [];
-  if (request.state === "PENDIENTE") actions.push(["review", "Marcar en revisión"]);
+  if (request.state === "PENDIENTE") actions.push(["review", "Tomar la tarea (en proceso)"]);
   if (request.state === "ENVIO_INDETERMINADO") actions.push(["release", "Liberar recurso y reabrir"]);
   if (["PENDIENTE", "EN_REVISION"].includes(request.state) && !request.resource_node) actions.push(["cancel", "Cancelar"]);
   if (["ACEPTADA", "EN_CURSO"].includes(request.state)) actions.push(["resolve", "Resolver"]);

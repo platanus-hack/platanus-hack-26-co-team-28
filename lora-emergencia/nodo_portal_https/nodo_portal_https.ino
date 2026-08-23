@@ -510,9 +510,36 @@ void setup() {
   oledMostrar("PUNTO AYUDA", "red: AYUDA...911", "esperando pedidos");
 }
 
+// Disparador de SOS de PRUEBA por el puerto serial. Sirve para validar el loop
+// completo sin el telefono, y como respaldo en el demo. En el monitor serial a
+// 115200 escribe "SOS" (o "SOS|GRUA|carro volcado"). Corre en el contexto de
+// loop() (dueno del radio), asi que envia directo con enviarConAck (no encola).
+void enviarSosPrueba(String cat, String detalle) {
+  if (cat.length() == 0) cat = "RESCATE";
+  if (detalle.length() == 0) detalle = "prueba serial: persona bajo escombros";
+  detalle = sanN(detalle, 100);
+  String pri = priDefault(cat);
+  uint32_t id = nextSequence();
+  activeSosSeq = id; hasActiveSos = true;
+  preferences.putUInt("active_sos", activeSosSeq);
+  preferences.putBool("has_sos", true);
+  strlcpy(estadoBuf, "-", sizeof(estadoBuf));
+  estadoAt = 0;
+  String msg = NODE_ID + "|" DST_CENTRO "|SOS|" + String(id) + "|" +
+               cat + "|" + pri + "|" + NODE_LAT + "|" + NODE_LON + "|Prueba serial|" + detalle;
+  Serial.println("[NODO] SOS de prueba (serial): " + msg);
+  enviarConAck(msg, id);
+}
+
 unsigned long lastDiag = 0;
 void loop() {
   dnsServer.processNextRequest();
+
+  // Comando de prueba por serial: "SOS" o "SOS|GRUA|carro volcado".
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n'); cmd.trim();
+    if (cmd.startsWith("SOS")) enviarSosPrueba(tok(cmd, 1), tok(cmd, 2));
+  }
 
   // 1. Si el servidor HTTPS encolo un envio, loop() lo ejecuta (dueno del radio).
   if (txPend) {

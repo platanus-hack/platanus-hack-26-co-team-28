@@ -164,7 +164,8 @@ class ApiTests(unittest.TestCase):
         notif = [f for f in self.gateway.frames if f.kind == "ST" and f.destination == "CIVIL1"]
         self.assertTrue(notif, "no se transmitio la notificacion ST al rescatista")
         self.assertEqual(notif[-1].origin, "CENTRO")
-        self.assertEqual(notif[-1].payload, ("7", "DESPACHADA"))
+        # El estado viaja traducido a la etiqueta que ve el ciudadano.
+        self.assertEqual(notif[-1].payload, ("7", "GRUA ASIGNADA"))
 
     def test_operator_action_notifies_citizen_over_radio(self):
         # En modo sim, la grua responde ACC por el simulador. El centro debe
@@ -176,7 +177,17 @@ class ApiTests(unittest.TestCase):
         sim_api.simulate("frames", {"frames": ["MEDICO01|CENTRO|ACC|99|CIVIL1|7"]})
         notif = [f for f in self.gateway.frames if f.kind == "ST" and f.destination == "CIVIL1"]
         self.assertTrue(notif, "no se notifico al rescatista tras ACC")
-        self.assertEqual(notif[-1].payload, ("7", "ACEPTADA"))
+        self.assertEqual(notif[-1].payload, ("7", "GRUA EN CAMINO"))
+
+    def test_pending_request_notifies_recibida(self):
+        # El estado PENDIENTE se traduce a "RECIBIDA": el aviso automatico que ve
+        # el ciudadano apenas su solicitud llega al puesto de mando.
+        request = self.store.list_requests()[0]
+        self.gateway.frames.clear()
+        self.api._notify_citizen(request)
+        notif = [f for f in self.gateway.frames if f.kind == "ST" and f.destination == "CIVIL1"]
+        self.assertTrue(notif, "no se transmitio el aviso RECIBIDA")
+        self.assertEqual(notif[-1].payload[1], "RECIBIDA")
 
     def test_human_actions_require_valid_transitions_and_are_audited(self):
         request_id = self.store.list_requests()[0]["id"]

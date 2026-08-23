@@ -188,6 +188,14 @@ def handle_gateway_line(line):
             result = STORE.ingest(frame, rssi, snr)
             notify_change()
             print("[RX] {} {} id={}: {}".format(frame.kind, frame.origin, frame.message_id, result))
+            # Loop bidireccional por radio:
+            # - SOS nuevo -> aviso automatico "RECIBIDA" al rescatista.
+            # - ACC/ST de una grua real -> notifica el estado nuevo al rescatista.
+            if API is not None:
+                if frame.kind == "SOS" and result == "CREATED":
+                    API._notify_citizen(STORE.get_request_by_node_seq(frame.origin, frame.message_id))
+                elif frame.kind in ("ACC", "ST") and len(frame.payload) >= 2:
+                    API._notify_citizen(STORE.get_request_by_node_seq(frame.payload[0], frame.payload[1]))
         except ValueError as exc:
             print("[RX INVALIDO] {}: {}".format(exc, line))
         return

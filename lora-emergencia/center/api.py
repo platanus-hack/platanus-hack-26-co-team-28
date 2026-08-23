@@ -13,6 +13,19 @@ REQUEST_STATES = {
 }
 RESOURCE_STATES = {"disponible", "reservado", "asignado", "enruta", "enlugar", "resuelta", "cancelada"}
 
+# Estado que ve el CIUDADANO en su telefono/OLED, traducido del estado interno.
+# El firmware es agnostico al texto (muestra lo que llega); el portal lo mapea a
+# un paso del timeline. Fuente unica de verdad de los textos del ciudadano.
+CITIZEN_STATUS = {
+    "PENDIENTE": "RECIBIDA",
+    "EN_REVISION": "EN GESTION",
+    "DESPACHADA": "GRUA ASIGNADA",
+    "ACEPTADA": "GRUA EN CAMINO",
+    "EN_CURSO": "GRUA EN CAMINO",
+    "RESUELTA": "RESUELTA",
+    "CANCELADA": "CANCELADA",
+}
+
 
 class ApiError(ValueError):
     def __init__(self, status, message):
@@ -251,10 +264,11 @@ class CommandApi:
         request_seq = request.get("seq")
         if not node or node == "CENTRO" or not estado or request_seq is None:
             return
+        estado_ciudadano = CITIZEN_STATUS.get(estado, estado)
         try:
             frame = RadioFrame(
                 "CENTRO", node, "ST", self.store.next_message_id(),
-                (str(request_seq), str(estado)),
+                (str(request_seq), str(estado_ciudadano)),
             )
             self.gateway.send_broadcast(frame)
         except Exception:

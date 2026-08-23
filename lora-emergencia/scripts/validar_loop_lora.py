@@ -1,29 +1,30 @@
 #!/usr/bin/env python3
 # ============================================================================
-# validar_loop_lora.py · Verificador del loop bidireccional con las 2 placas
+# validar_loop_lora.py · Verificador del demo completo con las 2 placas
 # ----------------------------------------------------------------------------
-# Prueba que el rescatista RECIBE por LoRa las notificaciones de estado que le
-# manda el centro cuando el operador avanza la solicitud. Cierra el demo:
-#   rescatista -> centro (SOS) ... centro -> rescatista (estado por LoRa).
+# Valida el flujo de punta a punta con hardware real:
+#   1. El rescatista envia un SOS (aqui se dispara por serial, en el demo lo
+#      manda el telefono por el portal).
+#   2. El centro lo recibe y le avisa "RECIBIDA" al rescatista (automatico).
+#   3. El operador TOMA LA TAREA -> "EN GESTION".
+#   4. El operador SOLICITA la grua -> "GRUA ASIGNADA".
+#   5. La grua ACEPTA y va en ruta -> "GRUA EN CAMINO".
+#   6. La grua RESUELVE -> "RESUELTA".
+# Verifica que el rescatista RECIBA los 5 estados por LoRa (OLED + /status).
 #
-# REQUISITOS:
-#   - center.py corriendo con --sim y el gateway (placa CENTRO) conectado.
-#   - La placa RESCATISTA conectada por USB (se lee su serial).
+# Nota de demo: la grua se registra como recurso de tipo RESCATE (la unidad de
+# maquinaria pesada que atiende rescates), para que el candado de compatibilidad
+# del centro permita despacharla a un rescate.
 #
-# USO:
-#   python3 scripts/validar_loop_lora.py \
-#       --rescatista /dev/cu.usbserial-59260043461 \
-#       --base http://127.0.0.1:8080
-#
-# Inyecta un SOS del nodo del rescatista por el simulador del centro, dispara el
-# ciclo del operador (despacho, ACC, en ruta, resuelta) y captura por serial que
-# el rescatista reciba DESPACHADA, ACEPTADA, EN_CURSO y RESUELTA.
+# REQUISITOS: center.py con --sim y el gateway conectado; la placa RESCATISTA por USB.
+# USO: python3 scripts/validar_loop_lora.py [--rescatista PUERTO] [--base URL]
 # ============================================================================
 import argparse
 import json
 import threading
 import time
 import urllib.request
+import urllib.error
 
 try:
     import serial
@@ -40,6 +41,8 @@ def http(base, method, path, body=None):
     try:
         with urllib.request.urlopen(req, timeout=6) as r:
             return r.status, r.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode()
     except Exception as e:  # noqa: BLE001
         return 0, str(e)
 
@@ -49,17 +52,14 @@ def main():
     p.add_argument("--rescatista", default="/dev/cu.usbserial-59260043461")
     p.add_argument("--base", default="http://127.0.0.1:8080")
     p.add_argument("--node", default="a3f21c", help="NODE_ID del firmware del rescatista")
-    p.add_argument("--seq", type=int, default=None, help="por defecto, uno unico por corrida")
+    p.add_argument("--grua", default="GRUA07", help="nodo de la grua (recurso)")
     args = p.parse_args()
     base = args.base.rstrip("/")
-    # seq unico por corrida para no chocar con una solicitud vieja del mismo nodo
-    node = args.node
-    seq = args.seq if args.seq is not None else int(time.time()) % 90000 + 1000
+    node, grua = args.node, args.grua
 
     def inject(frames):
         return http(base, "POST", "/api/v1/simulator/frames", {"frames": frames})
 
-    # 0. el centro responde y tiene simulador
     st, _ = http(base, "GET", "/api/v1/requests")
     if st != 200:
         print(ROJO + "El centro no responde en {} (arrancalo con --sim)".format(base) + FIN)
@@ -67,7 +67,6 @@ def main():
 
     recibidos = []
     stop = threading.Event()
-
     ser = serial.Serial(args.rescatista, 115200, timeout=1)
     ser.setDTR(False); ser.setRTS(True); time.sleep(0.1); ser.setRTS(False)  # reset
 
@@ -77,58 +76,66 @@ def main():
                 ln = ser.readline().decode("utf-8", "ignore").rstrip()
             except Exception:
                 break
-            if not ln:
-                continue
-            if "estado del centro" in ln:
+            if ln and "estado del centro" in ln:
                 est = ln.split(":")[-1].strip()
                 recibidos.append(est)
                 print("  " + VERDE + "<<< RESCATISTA RECIBIO: " + est + FIN)
 
-    th = threading.Thread(target=lector, daemon=True)
-    th.start()
+    threading.Thread(target=lector, daemon=True).start()
 
-    print(AZUL + "== Validador del loop bidireccional (2 placas) ==" + FIN)
+    print(AZUL + "== Validador del demo completo (2 placas) ==" + FIN)
     print(GRIS + "Esperando boot del rescatista (~9 s)..." + FIN)
     time.sleep(9)
 
-    print("1. registra grua + SOS del nodo {}".format(node))
-    inject(["VAL-GRUA|CENTRO|HB|900|GRUA|CENTRO|-|1",
-            "VAL-GRUA|CENTRO|POS|901|4.6505|-74.0602|8|0|disponible"])
-    inject(["{}|CENTRO|SOS|{}|GRUA||4.6520|-74.0610|Cra 7|prueba loop".format(node, seq)])
-    time.sleep(2)
+    # Grua como recurso RESCATE (unidad que atiende rescates), disponible y cercana.
+    print("1. registra la grua {} como recurso RESCATE".format(grua))
+    inject(["{}|CENTRO|HB|700|RESCATE|CENTRO|-|1".format(grua),
+            "{}|CENTRO|POS|701|4.6770|-74.0485|8|0|disponible".format(grua)])
+    time.sleep(1)
+
+    print("2. el rescatista envia un SOS (persona atrapada bajo escombros)")
+    ser.write(b"SOS|RESCATE|persona atrapada bajo escombros\n")
+    ser.flush()
+    time.sleep(6)  # envio + ACK + aviso automatico RECIBIDA
 
     _, body = http(base, "GET", "/api/v1/requests")
-    req_id = next((it["id"] for it in json.loads(body).get("items", [])
-                   if it.get("node") == node and it.get("seq") == seq), None)
-    if req_id is None:
-        stop.set(); th.join(timeout=2); ser.close()
+    reqs = sorted([it for it in json.loads(body).get("items", []) if it.get("node") == node],
+                  key=lambda x: x["id"])
+    if not reqs:
+        stop.set(); ser.close()
         print(ROJO + "No se creo la solicitud del nodo {}".format(node) + FIN)
         return 1
+    req = reqs[-1]
+    rid, seq = req["id"], req["seq"]
+    print(GRIS + "   solicitud id={} seq={} categoria={}".format(rid, seq, req["category"]) + FIN)
 
     pasos = [
-        ("2. operador DESPACHA a la grua", lambda: http(base, "POST",
-            "/api/v1/requests/{}/dispatch".format(req_id),
-            {"resource_node": "VAL-GRUA", "actor": "val", "reason": "val"})),
-        ("3. grua ACEPTA", lambda: inject(["VAL-GRUA|CENTRO|ACC|902|{}|{}".format(node, seq)])),
-        ("4. grua EN RUTA", lambda: inject(["VAL-GRUA|CENTRO|ST|903|{}|{}|enruta".format(node, seq)])),
-        ("5. grua RESUELVE", lambda: inject(["VAL-GRUA|CENTRO|ST|904|{}|{}|resuelta".format(node, seq)])),
+        ("3. el operador TOMA LA TAREA", lambda: http(base, "POST",
+            "/api/v1/requests/{}/actions".format(rid), {"action": "review", "actor": "val", "reason": "tomando"})),
+        ("4. el operador SOLICITA la grua", lambda: http(base, "POST",
+            "/api/v1/requests/{}/dispatch".format(rid), {"resource_node": grua, "actor": "val", "reason": "solicito grua"})),
+        ("5. la grua ACEPTA", lambda: inject(["{}|CENTRO|ACC|702|{}|{}".format(grua, node, seq)])),
+        ("6. la grua va EN RUTA", lambda: inject(["{}|CENTRO|ST|703|{}|{}|enruta".format(grua, node, seq)])),
+        ("7. la grua RESUELVE", lambda: inject(["{}|CENTRO|ST|704|{}|{}|resuelta".format(grua, node, seq)])),
     ]
     for titulo, accion in pasos:
         print("\n" + titulo)
-        accion()
+        code = accion()[0]
+        if code not in (200, 0):
+            print(ROJO + "   la accion devolvio HTTP {}".format(code) + FIN)
         time.sleep(4)
 
-    stop.set(); th.join(timeout=2)
-    ser.close()
+    stop.set(); time.sleep(0.3); ser.close()
 
     print("\n" + AZUL + "===== RESULTADO =====" + FIN)
-    esperados = ["DESPACHADA", "ACEPTADA", "EN_CURSO", "RESUELTA"]
+    esperados = ["RECIBIDA", "EN GESTION", "GRUA ASIGNADA", "GRUA EN CAMINO", "RESUELTA"]
     faltan = [e for e in esperados if e not in recibidos]
     for e in esperados:
         ok = e in recibidos
-        print("  [{}] rescatista recibio {}".format(VERDE + "PASS" + FIN if ok else ROJO + "FAIL" + FIN, e))
+        print("  [{}] rescatista recibio '{}'".format(
+            VERDE + "PASS" + FIN if ok else ROJO + "FAIL" + FIN, e))
     if not faltan:
-        print(VERDE + "\nTODO OK: el loop bidireccional funciona de punta a punta." + FIN)
+        print(VERDE + "\nTODO OK: el demo bidireccional funciona de punta a punta." + FIN)
         return 0
     print(ROJO + "\nFALTAN: {}".format(faltan) + FIN)
     return 1
