@@ -54,7 +54,7 @@ void oledMostrar(const String& l1, const String& l2, const String& l3) {
 #define LORA_DIO1 33
 SX1276 radio = new Module(LORA_CS, LORA_DIO0, LORA_RST, LORA_DIO1);
 
-const char* AP_SSID = "AYUDA_AQUI_RESCATISTA_911";
+const char* AP_SSID = "[AFECTADOS] RED DE AYUDA WOKI";  // 29 chars, limite softAP 32
 const char* DOMAIN = "ayuda.homiapp.xyz";
 IPAddress apIP(192, 168, 4, 1);
 DNSServer dnsServer;
@@ -507,7 +507,7 @@ void setup() {
   Serial.println("[NODO] Portal listo. https://ayuda.homiapp.xyz");
   Serial.print("[DIAG] heap libre tras setup: "); Serial.print(ESP.getFreeHeap());
   Serial.print("  bloque max contiguo: "); Serial.println(ESP.getMaxAllocHeap());
-  oledMostrar("PUNTO AYUDA", "red: AYUDA...911", "esperando pedidos");
+  oledMostrar("PUNTO AYUDA", "red: AFECTADOS WOKI", "esperando pedidos");
 }
 
 // Disparador de SOS de PRUEBA por el puerto serial. Sirve para validar el loop
