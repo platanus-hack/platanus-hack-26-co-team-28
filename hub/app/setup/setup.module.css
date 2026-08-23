@@ -27,7 +27,10 @@
 .instructions { min-width: 0; padding: clamp(24px, 3vw, 38px); display: flex; flex-direction: column; gap: 16px; }
 .titleRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 14px; }
 .titleRow h2 { max-width: 13ch; margin: 4px 0 0; font-size: clamp(28px, 3vw, 38px); line-height: 1.02; letter-spacing: -.04em; }
-.voiceButton { width: 38px; height: 38px; padding: 9px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--nav-text); background: var(--surface); cursor: pointer; }
+.voiceButton { width: 38px; height: 38px; padding: 9px; position: relative; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--nav-text); background: var(--surface); cursor: pointer; }
+.voiceButton::before, .voiceButton::after { content: ""; position: absolute; top: 1px; right: 1px; width: 8px; height: 8px; border-radius: 50%; pointer-events: none; }
+.voiceButton::before { background: rgba(121, 210, 62, .45); animation: eleven-pulse 1.7s ease-out infinite; }
+.voiceButton::after { border: 2px solid var(--surface); background: #79d23e; }
 .voiceButton:hover { color: var(--blue); border-color: var(--action-border); background: var(--blue-soft); }
 .voiceButton:disabled { cursor: progress; opacity: .65; }
 .voiceButton svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -72,7 +75,8 @@
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 @keyframes voice-pulse { from { background: var(--surface); } to { background: var(--blue-soft); } }
-@media (prefers-reduced-motion: reduce) { .progressTrack span, .switch span { transition: none; } .voiceLoading { animation: none; } }
+@keyframes eleven-pulse { 0% { transform: scale(1); opacity: .8; } 75%, 100% { transform: scale(2.4); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .progressTrack span, .switch span { transition: none; } .voiceLoading, .voiceButton::before { animation: none; } }
 
 @media (max-width: 900px) {
   .stepPanel { grid-template-columns: 1fr; }
