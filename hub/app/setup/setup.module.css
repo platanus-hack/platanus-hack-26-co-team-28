@@ -73,6 +73,8 @@
 .promptIntro { padding: 12px 14px; display: grid; gap: 2px; border-bottom: 1px solid var(--border); }
 .promptIntro strong { font-size: 13px; }
 .promptIntro span { color: var(--muted); font-size: 11px; }
+.promptIntro a { width: fit-content; margin-top: 5px; color: var(--action-text); font: 600 11px var(--font-sans); text-decoration: none; }
+.promptIntro em { margin-top: 4px; color: var(--red); font: 500 11px/1.35 var(--font-sans); }
 .aiOption { min-width: 0; padding: 11px 12px; display: grid; grid-template-columns: 32px minmax(72px, 1fr) auto; align-items: center; gap: 9px; border-bottom: 1px solid var(--border); }
 .aiOption:last-of-type { border-bottom: 0; }
 .aiOption > strong { font-size: 13px; }

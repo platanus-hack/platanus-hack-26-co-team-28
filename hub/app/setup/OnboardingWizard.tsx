@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ClaudeLogo } from "@/components/logos/claude";
 import { OpenAILogo } from "@/components/logos/openai";
@@ -13,6 +13,7 @@ import styles from "./setup.module.css";
 
 type ProviderState = "idle" | "loading" | "success" | "fallback" | "error";
 type CopyState = "idle" | "copying" | "success" | "error";
+type PromptLoadState = "loading" | "ready" | "error";
 type AiProvider = "chatgpt" | "claude";
 
 const AI_DESTINATIONS = {
@@ -46,6 +47,30 @@ function AiIcon({ provider }: { provider: AiProvider }) {
   );
 }
 
+function copyWithTemporarySelection(text: string) {
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.inset = "0 auto auto -9999px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, text.length);
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  previousFocus?.focus({ preventScroll: true });
+  return copied;
+}
+
+async function writePromptToClipboard(text: string) {
+  if (copyWithTemporarySelection(text)) return;
+  if (!navigator.clipboard?.writeText) throw new Error("clipboard-unavailable");
+  await navigator.clipboard.writeText(text);
+}
+
 function AiPromptMenu({
   className = "",
   intro,
@@ -59,20 +84,44 @@ function AiPromptMenu({
 }) {
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [copyTarget, setCopyTarget] = useState<AiProvider | null>(null);
+  const [promptLoadState, setPromptLoadState] = useState<PromptLoadState>("loading");
+  const [promptText, setPromptText] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setPromptLoadState("loading");
+    setPromptText(null);
+    fetch(promptFile, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("prompt-unavailable");
+        return response.text();
+      })
+      .then((text) => {
+        setPromptText(text);
+        setPromptLoadState("ready");
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setPromptLoadState("error");
+      });
+    return () => controller.abort();
+  }, [promptFile]);
 
   async function copyPrompt(provider: AiProvider, openAfterCopy = false) {
     const destination = AI_DESTINATIONS[provider];
     setCopyTarget(provider);
+    if (!promptText) {
+      setCopyState("error");
+      return;
+    }
     setCopyState("copying");
     try {
-      const response = await fetch(promptFile);
-      if (!response.ok) throw new Error("prompt-unavailable");
       await copyPromptThenMaybeOpen({
         destinationUrl: destination.url,
         openAfterCopy,
-        prompt: await response.text(),
+        prompt: promptText,
         dependencies: {
-          writeText: (text) => navigator.clipboard.writeText(text),
+          writeText: writePromptToClipboard,
           openDestination: (url) => {
             window.open(url, "_blank", "noopener,noreferrer");
           },
@@ -88,23 +137,29 @@ function AiPromptMenu({
     <details className={`${styles.aiPrompt} ${className}`}>
       <summary className={styles.promptTrigger}>
         <CopyIcon />
-        {copyState === "success" ? "Prompt copiado" : label}
+        {copyState === "success" ? "Prompt copiado" : copyState === "error" ? "No se pudo copiar" : label}
         <span aria-hidden="true">⌄</span>
       </summary>
       <div className={styles.promptMenu}>
-        <div className={styles.promptIntro}><strong>Continúa con tu IA</strong><span>{intro}</span></div>
+        <div className={styles.promptIntro}>
+          <strong>Continúa con tu IA</strong>
+          <span>{intro}</span>
+          <a href={promptFile} target="_blank" rel="noreferrer">Ver archivo .md ↗</a>
+          {promptLoadState === "error" && <em>No pudimos cargar el archivo. Ábrelo directamente.</em>}
+        </div>
         {(Object.keys(AI_DESTINATIONS) as AiProvider[]).map((provider) => {
           const destination = AI_DESTINATIONS[provider];
           const activeCopy = copyTarget === provider;
+          const disabled = promptLoadState !== "ready" || copyState === "copying";
           return (
             <div className={styles.aiOption} key={provider}>
               <AiIcon provider={provider} />
               <strong>{destination.label}</strong>
               <div className={styles.aiActions}>
-                <button disabled={copyState === "copying"} type="button" onClick={() => void copyPrompt(provider)}>
-                  {activeCopy && copyState === "copying" ? "Copiando…" : activeCopy && copyState === "success" ? "Copiado" : "Copiar"}
+                <button disabled={disabled} type="button" onClick={() => void copyPrompt(provider)}>
+                  {promptLoadState === "loading" ? "Preparando…" : activeCopy && copyState === "copying" ? "Copiando…" : activeCopy && copyState === "success" ? "Copiado" : activeCopy && copyState === "error" ? "Reintentar" : "Copiar"}
                 </button>
-                <button disabled={copyState === "copying"} type="button" onClick={() => void copyPrompt(provider, true)}>Copiar y abrir ↗</button>
+                <button disabled={disabled} type="button" onClick={() => void copyPrompt(provider, true)}>Copiar y abrir ↗</button>
               </div>
             </div>
           );

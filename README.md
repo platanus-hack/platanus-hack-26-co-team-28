@@ -4,6 +4,12 @@
 
 **Track: 🚨 Emergencies · team-28 · Platanus Hack 26 Bogotá**
 
+![Hardware: ESP32 + LoRa 915 MHz](https://img.shields.io/badge/Hardware-ESP32_%2B_LoRa_915_MHz-111111?style=flat-square)
+![Firmware: C++ + Arduino](https://img.shields.io/badge/Firmware-C%2B%2B_%2B_Arduino-111111?style=flat-square)
+![Offline: Python + SQLite](https://img.shields.io/badge/Offline-Python_%2B_SQLite-111111?style=flat-square)
+![Web: Next.js + React](https://img.shields.io/badge/Web-Next.js_%2B_React-111111?style=flat-square)
+![Cloud: Supabase + Vercel + Render](https://img.shields.io/badge/Cloud-Supabase_%2B_Vercel_%2B_Render-111111?style=flat-square)
+
 > Pedir ayuda y coordinar rescates sin internet, con visibilidad remota cuando vuelve la red.
 
 Cuando un terremoto tumba la red celular, pedir ayuda deja de ser un problema de interfaz y se
@@ -17,6 +23,22 @@ Celular → WiFi local → TTGO Esclavo → LoRa 915 MHz → TTGO Maestro → US
                                                                      ↓ internet disponible
                                                         Vercel → Supabase
 ```
+
+## Servicios locales y offline
+
+| Servicio | Red o conexión | Dirección local | Qué permite hacer |
+|---|---|---|---|
+| Punto de ayuda | WiFi abierto **`[AFECTADOS] RED DE AYUDA WOKI`** | Portal cautivo; acceso manual en `https://ayuda.homiapp.xyz/` o `192.168.4.1` | Pedir ayuda, compartir la ubicación o reportarse a salvo desde cualquier celular, sin instalar una app |
+| Portal del recurso | WiFi abierto **`RECURSO_<ID>`**, por ejemplo `RECURSO_GRUA07` | `http://192.168.4.1` | Recibir una misión o broadcast y confirmar su aceptación por LoRa |
+| LoRa Maestro | Radio LoRa 915 MHz + USB serial | No publica una URL; usa `/dev/ttyUSB0` en Raspberry Pi o `/dev/cu.usbserial-*` en macOS | Conectar los nodos de campo con el Centro local |
+| Command Center local | Raspberry Pi o laptop del puesto de mando | `http://localhost:8080` | Operar solicitudes, mapa, recursos, broadcasts y personas a salvo con SQLite, aun sin internet |
+| Diagnóstico local | Mismo equipo del Centro | `http://localhost:8080/health` y `http://localhost:8080/api/v1/overview` | Verificar el Centro e integrar clientes locales |
+
+Todos estos servicios operan sin internet. La dirección `192.168.4.1` se repite porque cada nodo
+crea su propia red WiFi aislada: el celular debe conectarse primero al SSID correcto. Por seguridad,
+el instalador expone el Centro solo en la misma laptop o Raspberry. Compartirlo en la LAN requiere
+iniciarlo deliberadamente con `--host 0.0.0.0` y un `--api-token`; entonces se abre en
+`http://<IP-DEL-CENTRO>:8080`.
 
 ## Todos los enlaces públicos
 
@@ -34,13 +56,15 @@ Hub principal. Los demás despliegues son evidencia complementaria.
 
 ## Frictionless por diseño
 
-- **Para la persona afectada:** no instala una app ni crea una cuenta. Se conecta a
-  `[AFECTADOS] RED DE AYUDA WOKI`, abre el portal cautivo y pide ayuda en pocos pasos. La ubicación
-  ayuda, pero nunca bloquea el reporte.
-- **Para quien prepara el kit:** el onboarding usa imágenes, simulación sin dispositivos, guía de
-  voz en español y prompts especializados para ChatGPT o Claude.
-- **Para quien prefiere terminal:** dos instaladores preparan una laptop limpia, Arduino CLI,
-  ESP32, librerías, firmware y Python sin requerir Arduino IDE.
+- **Instalación asistida:** el onboarding visual entrega prompts breves y especializados para que
+  ChatGPT, Claude u otro agente de IA acompañe el setup. Para perfiles técnicos, dos comandos
+  instalan Arduino CLI, ESP32, librerías, firmware y Python sin requerir Arduino IDE.
+- **Operación con triage:** el Centro prioriza la demanda y recomienda cómo distribuir recursos
+  compatibles; el operador humano conserva la decisión sobre cada despacho crítico.
+- **Acceso ciudadano sin app:** al conectarse a **`[AFECTADOS] RED DE AYUDA WOKI`** se abre el
+  portal cautivo para pedir ayuda en pocos pasos. Los tags NFC/QR están definidos para instalarse
+  en columnas y puntos seguros y facilitar el ingreso a la red; esta capa física aún debe validarse
+  en campo.
 
 ## Cómo funciona
 
