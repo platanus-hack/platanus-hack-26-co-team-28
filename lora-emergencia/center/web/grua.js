@@ -50,6 +50,11 @@ async function entrarServicio() {
     tick();
   } catch (error) {
     document.querySelector("#error").textContent = error.message;
+    // Restaura el boton si no se pudo entrar en servicio (toggleServicio lo
+    // habia puesto en "…").
+    const btn = document.querySelector("#connect");
+    btn.textContent = "Entrar en servicio";
+    btn.className = "btn conn";
   }
 }
 
@@ -64,18 +69,57 @@ function salirServicio() {
   document.querySelector("#list").innerHTML = "";
 }
 
-function toggleServicio() {
-  if (enServicio) salirServicio(); else entrarServicio();
+// Feedback minimo al pulsar entrar/salir de servicio: deshabilita el boton y
+// muestra "…" mientras corre el HB; al terminar el boton vuelve a su texto.
+async function toggleServicio() {
+  const btn = document.querySelector("#connect");
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    if (enServicio) salirServicio(); else await entrarServicio();
+  } finally {
+    btn.disabled = false;
+  }
 }
 
+// update() devuelve true si el frame salio bien y false si fallo. El listener de
+// #list usa ese valor para re-habilitar el boton cuando hay error. La firma
+// (kind, node, sequence, state) no cambia.
 async function update(kind, node, sequence, state = "") {
   try {
     await sendFrame(kind, state ? [node, sequence, state] : [node, sequence]);
     document.querySelector("#error").textContent = "";
     tick();
+    return true;
   } catch (error) {
     document.querySelector("#error").textContent = error.message;
+    return false;
   }
+}
+
+// Confirmacion breve tras una accion exitosa. Crea un toast fijo abajo, lo
+// muestra y lo oculta a los ~2.5s. Usa los tokens dark de grua.html.
+let toastTimer = null;
+function showToast(message) {
+  let toast = document.querySelector("#toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "toast";
+    toast.className = "toast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add("show");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.classList.remove("show"); }, 2500);
+}
+
+function toastMessage(kind, state) {
+  if (kind === "ACC") return "Aceptaste la asignación";
+  if (kind === "ST" && state === "enruta") return "Marcaste en ruta";
+  if (kind === "ST" && state === "enlugar") return "Marcaste en el lugar";
+  if (kind === "ST" && state === "resuelta") return "Caso resuelto";
+  return "Acción enviada";
 }
 
 function setStatus(text, kind) {
@@ -120,10 +164,27 @@ async function tick() {
 
 document.querySelector("#connect").addEventListener("click", toggleServicio);
 // Event delegation para los botones de accion (ACC/ST), que se generan dinamicamente.
-document.querySelector("#list").addEventListener("click", (event) => {
+document.querySelector("#list").addEventListener("click", async (event) => {
   const btn = event.target.closest("button[data-kind]");
-  if (!btn) return;
-  update(btn.dataset.kind, btn.dataset.node, btn.dataset.seq, btn.dataset.state || "");
+  if (!btn || btn.disabled) return;
+  // Feedback inmediato: deshabilita, guarda el texto y muestra "Enviando…".
+  // Esto evita doble-clic y muestra que el clic quedo registrado.
+  const originalText = btn.textContent;
+  const kind = btn.dataset.kind;
+  const btnState = btn.dataset.state || "";
+  btn.disabled = true;
+  btn.classList.add("sending");
+  btn.textContent = "Enviando…";
+  const ok = await update(kind, btn.dataset.node, btn.dataset.seq, btnState);
+  if (ok) {
+    // tick() ya refresco la lista (el boton desaparece); muestra confirmacion.
+    showToast(toastMessage(kind, btnState));
+  } else {
+    // Fallo el envio: #error ya muestra el motivo. Re-habilita el boton.
+    btn.disabled = false;
+    btn.classList.remove("sending");
+    btn.textContent = originalText;
+  }
 });
 setInterval(tick, 2000);
 // Al cargar: si el operador ya estaba en servicio, lo retomamos (reenvia el HB).

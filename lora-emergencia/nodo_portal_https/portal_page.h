@@ -114,6 +114,7 @@ input.text,textarea.text{width:100%;padding:14px;font-size:16px;border:1.5px sol
     <div class="spacer"></div>
     <button class="bigbtn danger" onclick="go('pedir')"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>PEDIR AYUDA<small>Tu ubicación se manda sola</small></button>
     <button class="btn outline" onclick="go('salvo')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--safe)" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>Estoy bien</button>
+    <div class="spacer" style="flex:.8"></div>
   </section>
 
   <!-- PEDIR -->
@@ -239,8 +240,11 @@ function gpsFalla(box){
 function mostrarEscape(){
   var e=document.getElementById('escape'); if(!e) return;
   var ua=navigator.userAgent, isiOS=/iPhone|iPad|iPod/i.test(ua), isAnd=/Android/i.test(ua);
-  var HTTPS='https://ayuda.homiapp.xyz/';
-  var INTENT='intent://ayuda.homiapp.xyz/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+HTTPS+';end';
+  // Destino: Chrome debe caer DIRECTO en la vista de categorias, no en el home.
+  // Usamos query param (?v=pedir), no fragmento: el '#' choca con el delimitador
+  // '#Intent' del intent:// y Chrome no lo entrega como hash. El query sí sobrevive.
+  var HTTPS='https://ayuda.homiapp.xyz/?v=pedir';
+  var INTENT='intent://ayuda.homiapp.xyz/?v=pedir#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+encodeURIComponent(HTTPS)+';end';
   if(isAnd){
     e.innerHTML='<b style="color:#4C9AFF">¿Quieres enviar tu ubicación GPS exacta?</b><br>Abre esta página en Chrome:<br><a href="'+INTENT+'" style="display:block;margin-top:8px;background:#4C9AFF;color:#04162e;padding:12px;border-radius:10px;text-decoration:none;text-align:center;font-weight:700">Abrir en Chrome</a>';
     e.style.display='block';
@@ -308,17 +312,15 @@ var seguimiento=null, horaEnvio='';
 var PASOS=[
   {t:'Recibida', d:'el puesto de mando recibió tu solicitud'},
   {t:'En proceso', d:'un operador está gestionando tu caso'},
-  {t:'Grúa asignada', d:'asignaron una grúa a tu caso'},
-  {t:'En camino', d:'la grúa va hacia ti'},
-  {t:'Te atendieron', d:'caso resuelto'}
+  {t:'Ayuda en camino', d:'una unidad va hacia ti'},
+  {t:'Resuelto', d:'te atendieron'}
 ];
 // Mapea el estado que manda el centro (etiqueta amigable, o el codigo interno de
 // respaldo) al paso del timeline que ve el ciudadano.
 function nivelDeEstado(est){
   est=(est||'').toUpperCase();
-  if(est==='RESUELTA') return 5;
-  if(est.indexOf('CAMINO')>=0||est==='ACEPTADA'||est==='EN_CURSO'||est==='ENLUGAR') return 4;
-  if(est.indexOf('ASIGNADA')>=0||est==='DESPACHADA') return 3;
+  if(est==='RESUELTA') return 4;
+  if(est.indexOf('CAMINO')>=0||est.indexOf('ASIGNADA')>=0||est==='DESPACHADA'||est==='ACEPTADA'||est==='EN_CURSO'||est==='ENLUGAR') return 3;
   if(est.indexOf('GESTION')>=0||est==='EN_REVISION') return 2;
   return 1; // RECIBIDA / PENDIENTE / sin dato
 }
@@ -367,6 +369,9 @@ function filaMono(k,v){ return '<div class="row"><span class="k">'+k+'</span><sp
 function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}); }
 function hora(){ var d=new Date(),p=function(n){return('0'+n).slice(-2)}; return p(d.getHours())+':'+p(d.getMinutes()); }
 document.getElementById('clock').textContent = hora();
+// Chrome abre la pagina con #pedir (viene del intent Android): entra directo a
+// categorias. go('pedir') dispara la captura de GPS, que es el objetivo del salto.
+if(location.hash==='#pedir' || /[?&]v=pedir/.test(location.search)){ go('pedir'); }
 </script>
 </body>
 </html>

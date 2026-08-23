@@ -771,11 +771,15 @@ async function submitDispatch(event) {
 }
 async function submitAction(event) {
   event.preventDefault();
+  const button = event.currentTarget.querySelector("button[type=submit]");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Enviando…";
   const values = Object.fromEntries(new FormData(event.currentTarget));
   try {
     await api(`/api/v1/requests/${event.currentTarget.dataset.requestId}/actions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
     notify("Acción registrada en el timeline"); closeDrawer(); await refreshCurrent();
-  } catch (error) { notify(error.message, true); }
+  } catch (error) { notify(error.message, true); button.disabled = false; button.textContent = originalText; }
 }
 
 async function renderResources() {
