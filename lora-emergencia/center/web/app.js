@@ -61,15 +61,6 @@ const ago = (value) => {
 const priorityBadge = (value) => `<span class="badge ${value === 0 ? "critical" : value === 1 ? "warning" : ""}">Prioridad ${value}</span>`;
 const stateBadge = (value) => `<span class="badge ${value === "disponible" || value === "RESUELTA" ? "success" : value === "CANCELADA" ? "critical" : ""}">${escapeHtml(value)}</span>`;
 const empty = (message) => `<div class="empty">${escapeHtml(message)}</div>`;
-// GRUA07 es el UNICO recurso con un operador real detras (grua.html, un
-// humano que acepta y avanza el estado por ACC/ST). Los demas recursos
-// (sembrados por scripts/sembrar_recursos.py) son solo datos simulados: si
-// se despachan, nadie responde y quedan en DESPACHADA. Diferenciacion
-// LIGERA solo en la UI (un badge), no en el protocolo: el frame HB/POS es
-// identico al de un nodo real, para el sistema son indistinguibles.
-const RECURSOS_CON_OPERADOR = new Set(["GRUA07"]);
-const esRecursoSimulado = (node) => !RECURSOS_CON_OPERADOR.has(node);
-const simuladoBadge = (node) => esRecursoSimulado(node) ? ` <span class="badge" title="Datos sembrados para el demo, sin operador real detrás">Simulado</span>` : "";
 // 2 perfiles distintos en 2 apps distintas. Cada chip lleva su propia etiqueta
 // ("Operador de grúa" / "Operador de centro") para que el tipo nunca sea
 // ambiguo, sin importar en qué sección de la pantalla aparezca:
@@ -77,8 +68,7 @@ const simuladoBadge = (node) => esRecursoSimulado(node) ? ` <span class="badge" 
 //   el topbar y en la seccion "Acción humana" (tomar/resolver/cancelar).
 // - RESPONSABLE_GRUA: el conductor de la grua GRUA07 (app separada grua.html).
 //   Aparece en el tag "Asignado" de la solicitud y en la seccion "Solicitar
-//   grúa" (esa seccion trata sobre GRUA07, por eso lleva su operador, no el
-//   del centro).
+//   grúa" cuando el recurso elegido es GRUA07.
 const OPERADOR_CENTRO = "Juan Ortega";
 const RESPONSABLE_GRUA = "Manuel Vargas";
 const assignedTag = (name) => `<span class="badge success">Asignado: ${escapeHtml(name)}</span>`;
@@ -89,6 +79,27 @@ const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0])
 // funcionando igual. `label` es el TIPO de operador (va en el <label> del campo,
 // visible antes del chip) y `detail` es el subtitulo dentro del chip.
 const operadorTag = (label, name, detail) => `<div class="field"><label>${escapeHtml(label)}</label><div class="user-tag"><span class="user-tag-avatar">${escapeHtml(initials(name))}</span><span class="user-tag-body"><span class="user-tag-name">${escapeHtml(name)}</span><span class="user-tag-role">${escapeHtml(detail)}</span></span><input type="hidden" name="actor" value="${escapeHtml(name)}"></div></div>`;
+// Recursos con un operador humano real detras de una app propia (hoy solo
+// GRUA07 -> grua.html -> Manuel Vargas, que acepta y avanza el estado por
+// ACC/ST). El resto (sembrados por scripts/sembrar_recursos.py) son solo
+// datos simulados: si se despachan, nadie responde y quedan en DESPACHADA.
+// RECURSOS_CON_OPERADOR se deriva de este mapa (una sola fuente de verdad),
+// para que el badge "Simulado" y el chip de operador nunca queden desincronizados.
+const OPERADOR_POR_RECURSO = {
+  GRUA07: { name: RESPONSABLE_GRUA, detail: "Conductor asignado · GRUA07" },
+};
+const RECURSOS_CON_OPERADOR = new Set(Object.keys(OPERADOR_POR_RECURSO));
+const esRecursoSimulado = (node) => !RECURSOS_CON_OPERADOR.has(node);
+const simuladoBadge = (node) => esRecursoSimulado(node) ? ` <span class="badge" title="Datos sembrados para el demo, sin operador real detrás">Simulado</span>` : "";
+// El chip de "Solicitar grúa" cambia segun el recurso elegido en el
+// desplegable: si tiene operador real, muestra a esa persona (ej. Manuel
+// Vargas para GRUA07); si es un recurso simulado, el despacho lo autoriza el
+// operador del centro (no hay nadie mas a quien atribuirselo).
+function chipOperadorParaRecurso(node) {
+  const real = OPERADOR_POR_RECURSO[node];
+  if (real) return operadorTag("Operador de grúa", real.name, real.detail);
+  return operadorTag("Operador de centro", OPERADOR_CENTRO, `Despacha ${node} · recurso simulado, sin operador propio`);
+}
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -760,6 +771,11 @@ async function openRequest(id) {
       <section class="detail-section"><h3>Timeline auditable</h3>${timeline.items.length ? `<div class="timeline">${timeline.items.map((item) => `<div class="timeline-item"><strong>${escapeHtml(item.event_type)}</strong><div>${escapeHtml(item.from_state || "Inicio")} → ${escapeHtml(item.to_state || "Sin cambio")}</div><div class="cell-sub">${escapeHtml(item.actor || "sistema")} · ${escapeHtml(item.reason || "Sin motivo")} · ${formatDate(item.created_at)}</div></div>`).join("")}</div>` : empty("Sin eventos")}</section>`;
     document.querySelector("#dispatch-form")?.addEventListener("submit", submitDispatch);
     document.querySelector("#action-form")?.addEventListener("submit", submitAction);
+    // El chip de operador depende de QUE recurso este elegido: cambia junto
+    // con el desplegable, en vez de quedar fijo en el recurso sugerido inicial.
+    document.querySelector("#resource-node")?.addEventListener("change", (event) => {
+      document.querySelector("#dispatch-operador").innerHTML = chipOperadorParaRecurso(event.target.value);
+    });
     drawer.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
     scrim.hidden = false;
@@ -775,7 +791,7 @@ function dispatchForm(request, candidates, suggested) {
     const sufijo = esRecursoSimulado(c.node) ? " · simulado" : "";
     return `<option value="${escapeHtml(c.node)}"${selected}>${escapeHtml(c.node)} · ${escapeHtml(dist)}${sufijo}</option>`;
   }).join("");
-  return `<section class="detail-section"><h3>Solicitar grúa</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">Grúa disponible y compatible</label><select id="resource-node" name="resource_node" required>${options}</select></div>${operadorTag("Operador de grúa", RESPONSABLE_GRUA, "Conductor asignado · GRUA07")}<div class="field"><label for="dispatch-reason">Motivo</label><textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Solicitar a la grúa</button></div></form></section>`;
+  return `<section class="detail-section"><h3>Solicitar grúa</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">Grúa disponible y compatible</label><select id="resource-node" name="resource_node" required>${options}</select></div><div id="dispatch-operador">${chipOperadorParaRecurso(suggested)}</div><div class="field"><label for="dispatch-reason">Motivo</label><textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Solicitar a la grúa</button></div></form></section>`;
 }
 function humanActions(request) {
   const actions = [];
