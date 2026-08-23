@@ -1043,18 +1043,23 @@ async function refreshCurrent() {
   } finally { state.loading = false; }
 }
 
+// Usa conBoton() (ui.js) igual que el resto. Antes reponia el texto a mano
+// con "↻ Sincronizar" fijo en el codigo, asi que al renombrar el boton a
+// "↻ Actualizar" en index.html la etiqueta cambiaba sola tras la primera
+// pulsacion. conBoton() repone el texto QUE HABIA, no uno escrito aparte.
 async function syncNow() {
   if (state.loading) return;
   state.loading = true;
-  syncButton.disabled = true;
-  syncButton.textContent = "Sincronizando…";
   try {
-    const ok = await renderRoute();
-    if (!ok) throw new Error("No se pudo actualizar");
-    state.lastUpdate = Date.now(); updateSyncStatus();
-    notify("Datos locales sincronizados");
-  } catch (error) { notify(error.message, true); }
-  finally { state.loading = false; syncButton.disabled = false; syncButton.textContent = "↻ Sincronizar"; }
+    await conBoton(syncButton, "Sincronizando…", async () => {
+      try {
+        const ok = await renderRoute();
+        if (!ok) throw new Error("No se pudo actualizar");
+        state.lastUpdate = Date.now(); updateSyncStatus();
+        notify("Datos locales sincronizados");
+      } catch (error) { notify(error.message, true); }
+    });
+  } finally { state.loading = false; }
 }
 
 let pollTimer = null;
