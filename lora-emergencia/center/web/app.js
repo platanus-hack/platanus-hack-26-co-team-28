@@ -25,6 +25,8 @@ const drawer = document.querySelector("#drawer");
 const scrim = document.querySelector("#scrim");
 const appShell = document.querySelector("#app-shell");
 const sidebarToggle = document.querySelector("#sidebar-toggle");
+const syncButton = document.querySelector("#sync-button");
+const lastSync = document.querySelector("#last-sync");
 
 function setSidebarCollapsed(collapsed, persist = true) {
   appShell.classList.toggle("sidebar-collapsed", collapsed);
@@ -36,6 +38,10 @@ function setSidebarCollapsed(collapsed, persist = true) {
 
 setSidebarCollapsed(localStorage.getItem("sidebarExpanded") !== "true", false);
 sidebarToggle.addEventListener("click", () => setSidebarCollapsed(!appShell.classList.contains("sidebar-collapsed")));
+
+function updateSyncStatus() {
+  lastSync.textContent = state.lastUpdate ? `Actualizado ${new Date(state.lastUpdate).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}` : "Sin sincronizar";
+}
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -107,6 +113,7 @@ async function getOverview() {
   state.overview = await api("/api/v1/overview");
   state.demo = state.overview.demo;
   state.lastUpdate = Date.now();
+  updateSyncStatus();
   document.querySelector("#simulator-nav").hidden = !state.demo;
   const connected = state.overview.gateway;
   document.querySelector("#connection-dot").classList.toggle("connected", connected);
@@ -379,7 +386,25 @@ async function refreshCurrent() {
   const editing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
   if (state.loading || document.hidden || editing || drawer.classList.contains("open") || route() === "simulator") return;
   state.loading = true;
-  try { return await renderRoute(); } finally { state.loading = false; }
+  try {
+    const ok = await renderRoute();
+    if (ok) { state.lastUpdate = Date.now(); updateSyncStatus(); }
+    return ok;
+  } finally { state.loading = false; }
+}
+
+async function syncNow() {
+  if (state.loading) return;
+  state.loading = true;
+  syncButton.disabled = true;
+  syncButton.textContent = "Sincronizando…";
+  try {
+    const ok = await renderRoute();
+    if (!ok) throw new Error("No se pudo actualizar");
+    state.lastUpdate = Date.now(); updateSyncStatus();
+    notify("Datos locales sincronizados");
+  } catch (error) { notify(error.message, true); }
+  finally { state.loading = false; syncButton.disabled = false; syncButton.textContent = "↻ Sincronizar"; }
 }
 
 let pollTimer = null;
@@ -407,6 +432,7 @@ function connectEvents() {
 }
 
 setInterval(() => { document.querySelector("#clock").textContent = new Date().toLocaleTimeString("es-CO"); }, 1000);
+syncButton.addEventListener("click", syncNow);
 document.querySelector("#api-token-button").addEventListener("click", () => {
   const token = window.prompt("Token API (se guarda solo en esta pestaña):", state.apiToken);
   if (token === null) return;
