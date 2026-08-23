@@ -20,15 +20,17 @@ RADIO_LOG = deque(maxlen=60)
 RADIO_LOCK = threading.Lock()
 
 
-def log_radio(direction, origin, destination, kind, message_id, note=""):
+def log_radio(direction, origin, destination, kind, message_id, note="", rssi=None, snr=None):
     """Registra un mensaje que cruza el centro. direction: RX (llega) o TX (sale)."""
     with RADIO_LOCK:
         RADIO_LOG.append({
             "dir": direction, "from": origin, "to": destination,
-            "kind": kind, "id": str(message_id), "note": note, "t": time.time(),
+            "kind": kind, "id": str(message_id), "note": note,
+            "rssi": rssi, "snr": snr, "t": time.time(),
         })
     arrow = "<-" if direction == "RX" else "->"
-    print(f"[RADIO {direction}] {origin} {arrow} {destination} {kind} id={message_id} {note}".rstrip())
+    extra = f" RSSI={rssi}" if rssi is not None else ""
+    print(f"[RADIO {direction}] {origin} {arrow} {destination} {kind} id={message_id}{extra} {note}".rstrip())
 
 
 class SerialGateway:
@@ -166,11 +168,18 @@ def handle_gateway_line(line):
     if line.startswith("RX|"):
         try:
             frame, rssi, snr = split_gateway_rx(line)
-            result = STORE.ingest(frame, rssi, snr)
-            log_radio("RX", frame.origin, frame.destination, frame.kind, frame.message_id)
-            print(f"[RX] {frame.kind} {frame.origin} id={frame.message_id}: {result}")
         except ValueError as exc:
             print(f"[RX INVALIDO] {exc}: {line}")
+            return
+        # El feed muestra SIEMPRE el mensaje con su RSSI (sirve de prueba de rango).
+        log_radio("RX", frame.origin, frame.destination, frame.kind, frame.message_id,
+                  rssi=rssi, snr=snr)
+        try:
+            result = STORE.ingest(frame, rssi, snr)
+            print(f"[RX] {frame.kind} {frame.origin} id={frame.message_id}: {result}")
+        except Exception as exc:
+            # Tipos que el store no maneja (ej PING de rango) igual salen en el feed.
+            print(f"[RX no ingerido] {frame.kind}: {exc}")
         return
     if line.startswith("TX_SENT|"):
         # El gateway confirma que transmitio por radio: TX_SENT|origin|dest|kind|msgid
@@ -217,7 +226,7 @@ let DATA={requests:[],safe:[],resources:[],broadcasts:[],gateway:false};const e=
 function ago(t){let s=Math.max(0,Date.now()/1000-t);return s<60?Math.floor(s)+'s':s<3600?Math.floor(s/60)+'m':Math.floor(s/3600)+'h'}
 function rol(id){id=String(id||'');if(id==='CENTRO')return'Centro';if(/GRUA|OPER|RES|BOMB|AMBU/i.test(id))return'Recurso';if(id==='BCAST')return'Todos';return'Rescatista'}
 function hhmm(t){let d=new Date(t*1000),p=n=>('0'+n).slice(-2);return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())}
-function renderRadio(){let evs=DATA.radio||[],box=document.getElementById('radiofeed');if(!box)return;if(!evs.length){box.innerHTML='<p class="muted">Sin tráfico de radio todavía.</p>';return}box.innerHTML=evs.slice(-14).reverse().map(x=>{let a=rol(x.from),b=rol(x.to),fresh=(Date.now()/1000-x.t)<6?'fresh':'',note=x.note?` <span class="muted">(${e(x.note)})</span>`:'';return `<div class="evt ${fresh}"><span class="hora">${hhmm(x.t)}</span><span class="who ${a}">${a}</span><span class="arw">&#8594;</span><span class="who ${b}">${b}</span>${note}<span class="tag ${e(x.kind)}">${e(x.kind)} #${e(x.id)}</span></div>`}).join('')}
+function renderRadio(){let evs=DATA.radio||[],box=document.getElementById('radiofeed');if(!box)return;if(!evs.length){box.innerHTML='<p class="muted">Sin tráfico de radio todavía.</p>';return}box.innerHTML=evs.slice(-14).reverse().map(x=>{let a=rol(x.from),b=rol(x.to),fresh=(Date.now()/1000-x.t)<6?'fresh':'',note=x.note?` <span class="muted">(${e(x.note)})</span>`:'',rssi=(x.rssi!=null&&x.rssi!=='')?` <span class="muted">RSSI ${e(x.rssi)}</span>`:'';return `<div class="evt ${fresh}"><span class="hora">${hhmm(x.t)}</span><span class="who ${a}">${a}</span><span class="arw">&#8594;</span><span class="who ${b}">${b}</span>${note}${rssi}<span class="tag ${e(x.kind)}">${e(x.kind)} #${e(x.id)}</span></div>`}).join('')}
 function plot(){let all=[...DATA.requests.filter(x=>x.lat&&x.lon).map(x=>({...x,k:'req'})),...DATA.resources.filter(x=>x.lat&&x.lon).map(x=>({...x,k:'res'}))];let map=document.getElementById('map');map.querySelectorAll('.dot').forEach(x=>x.remove());if(!all.length)return;let la=all.map(x=>+x.lat),lo=all.map(x=>+x.lon),minla=Math.min(...la)-.002,maxla=Math.max(...la)+.002,minlo=Math.min(...lo)-.002,maxlo=Math.max(...lo)+.002;all.forEach(x=>{let d=document.createElement('div');d.className='dot '+x.k;d.style.left=(8+84*((+x.lon-minlo)/(maxlo-minlo)))+'%';d.style.top=(8+78*(1-(+x.lat-minla)/(maxla-minla)))+'%';d.title=x.k==='req'?'Reporte '+x.id:x.node;map.appendChild(d)})}
 function render(){let open=DATA.requests.filter(x=>!['RESUELTA','CANCELADA'].includes(x.estado)),critical=open.filter(x=>x.pri===0),unassigned=open.filter(x=>x.estado==='PENDIENTE');metrics.innerHTML=[[critical.length,'Críticos'],[unassigned.length,'Sin asignar'],[DATA.resources.length,'Recursos'],[DATA.requests.length,'Reportes']].map(x=>`<div class="card metric"><b>${x[0]}</b><span>${x[1]}</span></div>`).join('');gateway.textContent=DATA.gateway?'Gateway conectado':'Gateway desconectado';gateway.className='badge '+(DATA.gateway?'ok':'bad');requests.innerHTML=open.length?open.map(x=>`<div class="row"><div class="rowhead"><b>#${x.id} ${e(x.cat)}</b><span class="pill p${x.pri}">Prioridad ${x.pri}</span><span class="pill">${e(x.estado)}</span></div><div>${e(x.detalle||x.lugar||'Sin detalle')}</div><div class="muted">${e(x.node)} · hace ${ago(x.t)} · ${e(x.operador||'sin recurso')}</div>${x.estado==='PENDIENTE'?`<div class="actions"><button class="btn primary" onclick="dispatch(${x.id})">Asignar recurso</button></div>`:''}</div>`).join(''):'<p class="muted">Sin solicitudes abiertas.</p>';resources.innerHTML=DATA.resources.length?DATA.resources.map(x=>`<div class="row"><b>${e(x.node)}</b> · ${e(x.kind)} <span class="pill">${e(x.state)}</span><div class="muted">Zona ${e(x.zone)} · visto hace ${ago(x.last_seen)}</div></div>`).join(''):'<p class="muted">Sin recursos registrados.</p>';safe.innerHTML=DATA.safe.length?DATA.safe.map(x=>`<div class="row"><b>${e(x.nombre)}</b><div class="muted">${e(x.doc)} · hace ${ago(x.t)}</div></div>`).join(''):'<p class="muted">Sin registros.</p>';let b=DATA.broadcasts[0];bcstatus.textContent=b?`Último: ${b.message} · ${b.received_count} confirmaciones técnicas`:'Sin broadcasts enviados';renderRadio();plot()}
 async function dispatch(id){let resource=prompt('ID del nodo recurso','GRUA07');if(!resource)return;if(!confirm('¿Asignar la solicitud #'+id+' a '+resource+'?'))return;let r=await fetch('/api/dispatch?id='+id+'&resource='+encodeURIComponent(resource),{method:'POST'}),d=await r.json();if(!r.ok)alert(d.error||'No se pudo entregar');tick()}
