@@ -253,6 +253,7 @@ async function renderOverview() {
       ${metric(metrics.critical, "Solicitudes críticas")}${metric(metrics.pending, "Decisiones pendientes")}${metric(metrics.available_resources, "Recursos disponibles")}${metric(metrics.open_requests, "Solicitudes abiertas")}
     </section>
     <section id="overview-coverage" aria-label="Cobertura operativa">${coveragePanel(data.coverage)}</section>
+    <section id="overview-sin-ubicacion" aria-label="Solicitudes sin ubicación">${sinUbicacionPanel(data.requests)}</section>
     <div class="grid">
       <section class="panel map-panel"><div class="panel-head"><div><h3>Mapa operacional</h3><span id="map-positions-note" class="muted">${mapPositionsNote(data)}</span></div><div class="panel-actions"><button id="locate-center" class="button" type="button">Usar ubicación actual</button><button id="manual-center" class="button" type="button">Ingresar coordenadas</button></div></div>
         <div class="map-toolbar" aria-label="Controles del mapa">
@@ -304,12 +305,35 @@ function coveragePanel(coverage) {
   const gapItems = gaps.slice(0, 6).map((item) => `<button class="list-item list-button coverage-row" data-request-id="${item.request_id}"><div class="list-line"><span class="badge">Sin nadie asignado</span><strong>#${item.request_id} · ${escapeHtml(item.category || "")}</strong></div><div class="cell-sub">${escapeHtml(item.place || "Sin lugar")} · esperando ${waitLabel(item.waiting_seconds)}</div></button>`).join("");
   return `<div class="panel coverage-panel"><div class="panel-head"><h3>Cobertura</h3><div class="panel-actions">${overlaps.length ? `<span class="badge critical">${overlaps.length} duplicado${overlaps.length === 1 ? "" : "s"}</span>` : ""}${gaps.length ? `<span class="badge warning">${gaps.length} sin asignar</span>` : ""}</div></div><div class="list">${overlapItems}${gapItems}</div>${gaps.length > 6 ? `<p class="muted" style="padding:0 16px 12px">Y ${gaps.length - 6} solicitudes más sin asignar.</p>` : ""}</div>`;
 }
+// Una solicitud sin coordenadas NO se puede dibujar, y el mapa la dejaba caer
+// en silencio (ver el filtro validCoordinate al construir los puntos). Eso es
+// peligroso: la solicitud existe en la cola, pero el mapa (que es donde se mira
+// para decidir) dice que ahi no pasa nada. Desde que pedir ayuda no exige GPS,
+// esto pasa a menudo: el portal cautivo del iPhone no puede leer el GPS.
+// Aqui se listan aparte, con lo unico que se sabe de donde estan: el lugar
+// escrito y el nodo por el que entraron.
+function sinUbicacionPanel(requests) {
+  const sinGps = (requests || []).filter((item) => !validCoordinate(item.lat, item.lon));
+  if (!sinGps.length) return "";
+  const filas = sinGps.slice(0, 8).map((item) => {
+    const pista = item.place && item.place !== "-" ? escapeHtml(item.place) : "sin lugar escrito";
+    return `<button class="list-item list-button coverage-row" data-request-id="${item.id}"><div class="list-line"><span class="badge warning">Sin ubicación</span><strong>#${item.id} · ${escapeHtml(item.category || "")}</strong>${stateBadge(item.state)}</div><div class="cell-sub">${pista} · entró por <span class="mono">${escapeHtml(item.node)}</span></div></button>`;
+  }).join("");
+  return `<section class="panel coverage-panel"><div class="panel-head"><div><h3>Fuera del mapa</h3><span class="muted">Llegaron sin GPS, así que no se pueden dibujar. Ábrelas para verlas.</span></div><div class="panel-actions"><span class="badge warning">${sinGps.length} sin ubicación</span></div></div><div class="list">${filas}</div>${sinGps.length > 8 ? `<p class="muted" style="padding:0 16px 12px">Y ${sinGps.length - 8} más.</p>` : ""}</section>`;
+}
 function waitLabel(seconds) {
   if (seconds < 60) return `${seconds} s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
   return `${Math.floor(seconds / 3600)} h`;
 }
-function mapPositionsNote(data) { return `Toca un punto para ver detalles · ${centerPositionLabel(data.center_position)}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}`; }
+function mapPositionsNote(data) {
+  // Decir CUANTAS solicitudes no salen aqui. Sin este aviso, el mapa parece
+  // completo cuando no lo es, y la ausencia de un punto se lee como "ahi no
+  // pasa nada" en vez de "ahi no sabemos donde".
+  const fuera = (data.requests || []).filter((item) => !validCoordinate(item.lat, item.lon)).length;
+  const aviso = fuera ? ` · ${fuera} solicitud${fuera === 1 ? "" : "es"} sin ubicación, fuera del mapa` : "";
+  return `Toca un punto para ver detalles · ${centerPositionLabel(data.center_position)}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}${aviso}`;
+}
 function overviewQueue(requests) { return requests.length ? requests.slice(0, 7).map(requestListItem).join("") : empty("Sin solicitudes abiertas"); }
 function latestSafeBadge(items) {
   if (!items?.length) return "";
