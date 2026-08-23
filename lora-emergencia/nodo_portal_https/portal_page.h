@@ -428,7 +428,12 @@ function renderTimeline(nivel){
   var tl=document.getElementById('tl'); if(!tl) return;
   var html='';
   for(var i=0;i<PASOS.length;i++){
-    var cls = i < nivel-1 ? 'done' : (i===nivel-1 ? 'now' : 'pending');
+    // El ultimo paso ALCANZADO va como 'now' (en curso) salvo cuando el caso
+    // ya cerro: ahi va 'done', con su check verde. Sin esta excepcion el paso
+    // final "Resuelto" caia siempre en 'now' y nunca podia marcarse, aunque el
+    // centro ya hubiera dado el caso por atendido.
+    var cerrado = nivel >= PASOS.length;
+    var cls = (i < nivel-1 || (cerrado && i === nivel-1)) ? 'done' : (i===nivel-1 ? 'now' : 'pending');
     var check = cls==='done' ? "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3'><path d='M20 6 9 17l-5-5'/></svg>" : '';
     var line = i<PASOS.length-1 ? "<div class='line'></div>" : '';
     var d = (cls==='pending') ? 'Aún no' : (i===0 ? (horaEnvio+' · '+PASOS[0].d) : PASOS[i].d);
