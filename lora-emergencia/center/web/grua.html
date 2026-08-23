@@ -28,7 +28,15 @@
   .btn{border:none;width:100%;min-height:56px;padding:15px;border-radius:14px;cursor:pointer;font-weight:700;font-size:16px;color:#fff;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px}
   .btn:active{transform:scale(.98)}
   .btn.sending{opacity:.72}
-  .btn:disabled{cursor:default}
+  /* Un boton deshabilitado se tiene que VER deshabilitado: solo cambiar el
+     cursor no se nota en un telefono, que no tiene cursor. */
+  .btn:disabled{cursor:default;opacity:.6}
+  .btn:focus-visible{outline:3px solid var(--notice);outline-offset:3px}
+  /* Respeta a quien pide menos movimiento en el sistema (WCAG 2.3.3). */
+  @media (prefers-reduced-motion: reduce){
+    .btn:active{transform:none}
+    .toast{transition:none}
+  }
   /* Toast de confirmacion tras una accion exitosa. Tokens dark del sistema. */
   .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(12px);
     background:var(--surface2);color:var(--text);border:1.5px solid var(--border);border-radius:12px;
@@ -69,12 +77,13 @@
       <div><h1 id="titulo">Cargando…</h1><div class="sub"><span class="dot" id="status-dot"></span><span id="status">Fuera de servicio</span> · <span id="subtitulo"></span></div></div>
     </div>
     <button class="btn conn" id="connect" type="button">Entrar en servicio</button>
-    <div id="error" class="error"></div>
+    <div id="error" class="error" role="alert"></div>
     <div id="list" class="list"></div>
     <div class="spacer"></div>
     <div class="foot">Recibes asignaciones del puesto de mando por radio LoRa.</div>
   </div>
   <script src="/operadores.js"></script>
+  <script src="/ui.js"></script>
   <script src="/grua.js"></script>
 </body>
 </html>

@@ -89,17 +89,19 @@ function salirServicio() {
   document.querySelector("#list").innerHTML = "";
 }
 
-// Feedback minimo al pulsar entrar/salir de servicio: deshabilita el boton y
-// muestra "…" mientras corre el HB; al terminar el boton vuelve a su texto.
+// Feedback al pulsar entrar/salir de servicio. Usa conBoton() (ui.js), el
+// mismo helper del dashboard: deshabilita, dice QUE esta haciendo y marca
+// aria-busy. Antes mostraba solo "…", que no dice nada.
+// conBoton() restaura el texto que habia ANTES del clic; aqui el texto correcto
+// depende del resultado (entro o no entro), asi que se fija al final.
 async function toggleServicio() {
   const btn = document.querySelector("#connect");
-  btn.disabled = true;
-  btn.textContent = "…";
-  try {
-    if (enServicio) salirServicio(); else await entrarServicio();
-  } finally {
-    btn.disabled = false;
-  }
+  const entrando = !enServicio;
+  await window.conBoton(btn, entrando ? "Entrando en servicio…" : "Saliendo…", async () => {
+    if (entrando) await entrarServicio(); else salirServicio();
+  });
+  btn.textContent = enServicio ? "Salir de servicio" : "Entrar en servicio";
+  btn.className = enServicio ? "btn salir" : "btn conn";
 }
 
 // update() devuelve true si el frame salio bien y false si fallo. El listener de
@@ -126,6 +128,10 @@ function showToast(message) {
     toast = document.createElement("div");
     toast.id = "toast";
     toast.className = "toast";
+    // role/aria-live: un lector de pantalla anuncia la confirmacion sin robar
+    // el foco. Igual que el toast del dashboard (index.html).
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
     document.body.appendChild(toast);
   }
   toast.textContent = message;
@@ -187,24 +193,16 @@ document.querySelector("#connect").addEventListener("click", toggleServicio);
 document.querySelector("#list").addEventListener("click", async (event) => {
   const btn = event.target.closest("button[data-kind]");
   if (!btn || btn.disabled) return;
-  // Feedback inmediato: deshabilita, guarda el texto y muestra "Enviando…".
-  // Esto evita doble-clic y muestra que el clic quedo registrado.
-  const originalText = btn.textContent;
+  // Feedback inmediato con conBoton() (ui.js): deshabilita, dice "Enviando…" y
+  // marca aria-busy. La clase .sending baja la opacidad, que conBoton() no toca.
   const kind = btn.dataset.kind;
   const btnState = btn.dataset.state || "";
-  btn.disabled = true;
   btn.classList.add("sending");
-  btn.textContent = "Enviando…";
-  const ok = await update(kind, btn.dataset.node, btn.dataset.seq, btnState);
-  if (ok) {
-    // tick() ya refresco la lista (el boton desaparece); muestra confirmacion.
-    showToast(toastMessage(kind, btnState));
-  } else {
-    // Fallo el envio: #error ya muestra el motivo. Re-habilita el boton.
-    btn.disabled = false;
-    btn.classList.remove("sending");
-    btn.textContent = originalText;
-  }
+  const ok = await window.conBoton(btn, "Enviando…", () => update(kind, btn.dataset.node, btn.dataset.seq, btnState));
+  btn.classList.remove("sending");
+  // Si salio, tick() ya refresco la lista (el boton desaparece) y confirmamos
+  // con el toast. Si fallo, #error muestra el motivo y el boton vuelve solo.
+  if (ok) showToast(toastMessage(kind, btnState));
 });
 setInterval(tick, 2000);
 

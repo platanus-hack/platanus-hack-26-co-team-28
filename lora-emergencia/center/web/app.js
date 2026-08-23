@@ -163,6 +163,10 @@ async function api(path, options = {}) {
   return data;
 }
 
+// conBoton() (feedback de boton trabajando) vive en ui.js, compartido con la
+// vista de operador, para que las 2 pantallas se comporten igual.
+const conBoton = window.conBoton;
+
 function notify(message, error = false) {
   const toast = document.querySelector("#toast");
   toast.textContent = message;
@@ -571,14 +575,16 @@ function updateOfflineMapControl() {
 
 async function downloadOfflineMap() {
   const button = document.querySelector("#map-download");
-  button.disabled = true;
-  try {
-    await api("/api/v1/map/download", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-    await pollOfflineMap();
-  } catch (error) {
-    notify(error.message, true);
-    button.disabled = false;
-  }
+  // pollOfflineMap() re-pinta la tarjeta del mapa con su propio texto de
+  // progreso, asi que aqui solo cubrimos el hueco entre el clic y ese repintado.
+  await conBoton(button, "Descargando…", async () => {
+    try {
+      await api("/api/v1/map/download", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      await pollOfflineMap();
+    } catch (error) {
+      notify(error.message, true);
+    }
+  });
 }
 
 async function pollOfflineMap() {
@@ -915,27 +921,27 @@ function humanActions(request) {
 }
 async function submitDispatch(event) {
   event.preventDefault();
-  const button = event.currentTarget.querySelector("button[type=submit]");
-  button.disabled = true;
-  const values = Object.fromEntries(new FormData(event.currentTarget));
+  const form = event.currentTarget;
+  const values = Object.fromEntries(new FormData(form));
   delete values.confirmed;
-  try {
-    const result = await api(`/api/v1/requests/${event.currentTarget.dataset.requestId}/dispatch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
-    notify(`Despacho transmitido con prioridad ${result.effective_priority}`);
-    closeDrawer(); await refreshCurrent();
-  } catch (error) { notify(error.message, true); button.disabled = false; }
+  await conBoton(form.querySelector("button[type=submit]"), "Transmitiendo…", async () => {
+    try {
+      const result = await api(`/api/v1/requests/${form.dataset.requestId}/dispatch`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
+      notify(`Despacho transmitido con prioridad ${result.effective_priority}`);
+      closeDrawer(); await refreshCurrent();
+    } catch (error) { notify(error.message, true); }
+  });
 }
 async function submitAction(event) {
   event.preventDefault();
-  const button = event.currentTarget.querySelector("button[type=submit]");
-  const originalText = button.textContent;
-  button.disabled = true;
-  button.textContent = "Enviando…";
-  const values = Object.fromEntries(new FormData(event.currentTarget));
-  try {
-    await api(`/api/v1/requests/${event.currentTarget.dataset.requestId}/actions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
-    notify("Acción registrada en el timeline"); closeDrawer(); await refreshCurrent();
-  } catch (error) { notify(error.message, true); button.disabled = false; button.textContent = originalText; }
+  const form = event.currentTarget;
+  const values = Object.fromEntries(new FormData(form));
+  await conBoton(form.querySelector("button[type=submit]"), "Registrando…", async () => {
+    try {
+      await api(`/api/v1/requests/${form.dataset.requestId}/actions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
+      notify("Acción registrada en el timeline"); closeDrawer(); await refreshCurrent();
+    } catch (error) { notify(error.message, true); }
+  });
 }
 
 async function renderResources() {
@@ -943,7 +949,14 @@ async function renderResources() {
   content.innerHTML = `<div class="page-head"><div><h2>Recursos</h2><p>Contacto y frescura de posición se muestran por separado.</p></div><span class="badge">${data.items.length} nodos</span></div>
     <form id="resource-filters" class="filters"><div class="field"><label for="resource-state">Estado</label><select id="resource-state" name="state"><option value="">Todos</option>${["disponible","reservado","asignado","enruta","enlugar","resuelta","cancelada"].map(option).join("")}</select></div><div class="field"><label for="resource-kind">Tipo</label><select id="resource-kind" name="kind"><option value="">Todos</option>${["MEDICO","RESCATE","GRUA","AGUA","FUEGO"].map(option).join("")}</select></div><div class="field"><label for="resource-zone">Zona operativa</label><input id="resource-zone" name="zone" maxlength="24"></div><button class="button" type="submit">Aplicar filtros</button></form>
     <section id="resource-results" class="panel">${resourcesTable(data.items)}</section>`;
-  document.querySelector("#resource-filters").addEventListener("submit", async (event) => { event.preventDefault(); try { const result = await api(`/api/v1/resources?${new URLSearchParams(new FormData(event.currentTarget))}`); document.querySelector("#resource-results").innerHTML = resourcesTable(result.items); } catch (error) { notify(error.message, true); } });
+  document.querySelector("#resource-filters").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await conBoton(form.querySelector("button[type=submit]"), "Aplicando…", async () => {
+      try { const result = await api(`/api/v1/resources?${new URLSearchParams(new FormData(form))}`); document.querySelector("#resource-results").innerHTML = resourcesTable(result.items); }
+      catch (error) { notify(error.message, true); }
+    });
+  });
 }
 function resourcesTable(items) {
   if (!items.length) return empty("No hay recursos con estos filtros");
@@ -974,9 +987,11 @@ function reviewBroadcast(event) {
   event.preventDefault(); state.broadcastDraft = Object.fromEntries(new FormData(event.currentTarget)); state.broadcastReviewed = true; state.broadcastConfirmed = false;
   document.querySelector("#broadcast-composer").innerHTML = broadcastComposer(); bindBroadcastForm();
 }
-async function sendBroadcast() {
+async function sendBroadcast(event) {
   if (!document.querySelector("#broadcast-confirmed").checked) return notify("Confirma la revisión operacional", true);
-  try { await api("/api/v1/broadcasts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state.broadcastDraft) }); notify("Broadcast transmitido; esperando recibos técnicos"); state.broadcastDraft = null; state.broadcastReviewed = false; state.broadcastConfirmed = false; await renderBroadcasts(); } catch (error) { notify(error.message, true); }
+  await conBoton(event?.currentTarget, "Transmitiendo…", async () => {
+    try { await api("/api/v1/broadcasts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state.broadcastDraft) }); notify("Broadcast transmitido; esperando recibos técnicos"); state.broadcastDraft = null; state.broadcastReviewed = false; state.broadcastConfirmed = false; await renderBroadcasts(); } catch (error) { notify(error.message, true); }
+  });
 }
 function broadcastList(items) { return items.length ? `<div class="list">${items.map((item) => `<button class="list-item list-button broadcast-detail" data-id="${item.message_id}"><div class="list-line"><strong class="mono">#${item.message_id}</strong><span class="badge">${escapeHtml(item.scope)}</span><span class="badge ${item.priority === "URGENT" ? "critical" : ""}">${escapeHtml(item.priority)}</span><span class="badge">${escapeHtml(item.status)}</span></div><div>${escapeHtml(item.message)}</div><div class="cell-sub">${item.received_count} recibos técnicos · ${ago(item.created_at)}</div></button>`).join("")}</div>` : empty("Sin broadcasts enviados"); }
 async function openBroadcast(id) { try { const item = await api(`/api/v1/broadcasts/${id}`); document.querySelector("#drawer-content").innerHTML = `<section class="detail-section"><h3>Broadcast #${item.message_id}</h3><p>${escapeHtml(item.message)}</p><dl class="key-values"><dt>Audiencia</dt><dd>${escapeHtml(item.scope)}</dd><dt>Prioridad</dt><dd>${escapeHtml(item.priority)}</dd><dt>Expiración</dt><dd>${formatDate(item.expires_at)}</dd></dl></section><section class="detail-section"><h3>Recibos técnicos BCA</h3>${item.receipts.length ? `<div class="list">${item.receipts.map((receipt) => `<div class="list-item"><strong class="mono">${escapeHtml(receipt.node)}</strong><div class="cell-sub">${formatDate(receipt.received_at)}</div></div>`).join("")}</div>` : empty("Ningún nodo ha confirmado recepción técnica")}</section>`; drawer.classList.add("open"); drawer.setAttribute("aria-hidden", "false"); scrim.hidden = false; } catch (error) { notify(error.message, true); } }
@@ -984,14 +999,25 @@ async function openBroadcast(id) { try { const item = await api(`/api/v1/broadca
 async function renderSafePeople() {
   const data = await api("/api/v1/safe-people?limit=150");
   content.innerHTML = `<div class="page-head"><div><h2>Personas a salvo</h2><p>Registros OK recibidos desde nodos civiles.</p></div><span class="badge success">${data.items.length} registros</span></div><form id="safe-search" class="filters"><div class="field"><label for="safe-q">Buscar por nombre, documento, lugar o nodo</label><input id="safe-q" name="q"></div><button class="button" type="submit">Buscar</button></form><section id="safe-results" class="panel">${safeTable(data.items)}</section>`;
-  document.querySelector("#safe-search").addEventListener("submit", async (event) => { event.preventDefault(); try { const result = await api(`/api/v1/safe-people?${new URLSearchParams(new FormData(event.currentTarget))}&limit=150`); document.querySelector("#safe-results").innerHTML = safeTable(result.items); } catch (error) { notify(error.message, true); } });
+  document.querySelector("#safe-search").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await conBoton(form.querySelector("button[type=submit]"), "Buscando…", async () => {
+      try { const result = await api(`/api/v1/safe-people?${new URLSearchParams(new FormData(form))}&limit=150`); document.querySelector("#safe-results").innerHTML = safeTable(result.items); }
+      catch (error) { notify(error.message, true); }
+    });
+  });
 }
 function safeTable(items) { return items.length ? `<div class="table-wrap"><table><thead><tr><th>Persona</th><th>Documento</th><th>Lugar</th><th>Nodo</th><th>Registro</th></tr></thead><tbody>${items.map((item) => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td class="mono">${escapeHtml(item.document)}</td><td>${escapeHtml(item.place || "Sin lugar")}<div class="cell-sub mono">${escapeHtml(item.lat)}, ${escapeHtml(item.lon)}</div></td><td class="mono">${escapeHtml(item.node)}</td><td>${formatDate(item.created_at)}</td></tr>`).join("")}</tbody></table></div>` : empty("No se encontraron personas"); }
 
 async function renderSimulator() {
   content.innerHTML = `<div class="page-head"><div><h2>Simulador</h2><p>Solo demo. Inyecta frames reales mediante CenterStore.ingest.</p></div><span class="badge warning">Modo demo</span></div><div class="grid equal"><section class="panel"><div class="panel-head"><h3>Escenarios</h3></div><div class="panel-body"><div class="field"><label for="scenario">Escenario operacional</label><select id="scenario"><option value="critical-medical">Solicitud médica crítica</option><option value="rescue">Rescate con atrapados</option><option value="medical-resource">Recurso médico disponible</option></select></div><div class="form-actions"><button id="run-scenario" class="button action">Inyectar escenario</button></div></div></section><section class="panel"><div class="panel-head"><h3>Frame de protocolo</h3></div><div class="panel-body"><form id="frame-form"><div class="field"><label for="raw-frame">Frame dirigido a CENTRO</label><textarea id="raw-frame" name="frame" required maxlength="512">SIM-CIVIL|CENTRO|SOS|99|MEDICO|2|4.6712|-74.0530|Centro|persona inconsciente</textarea></div><div class="form-actions"><button class="button primary">Inyectar frame</button></div></form></div></section></div>`;
-  document.querySelector("#run-scenario").addEventListener("click", async () => injectSimulator("scenarios", { scenario: document.querySelector("#scenario").value }));
-  document.querySelector("#frame-form").addEventListener("submit", (event) => { event.preventDefault(); injectSimulator("frames", Object.fromEntries(new FormData(event.currentTarget))); });
+  document.querySelector("#run-scenario").addEventListener("click", async (event) => conBoton(event.currentTarget, "Inyectando…", () => injectSimulator("scenarios", { scenario: document.querySelector("#scenario").value })));
+  document.querySelector("#frame-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    await conBoton(form.querySelector("button"), "Inyectando…", () => injectSimulator("frames", Object.fromEntries(new FormData(form))));
+  });
 }
 async function injectSimulator(endpoint, body) { try { const result = await api(`/api/v1/simulator/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); notify(`${result.results.length} frame(s) procesados`); } catch (error) { notify(error.message, true); } }
 

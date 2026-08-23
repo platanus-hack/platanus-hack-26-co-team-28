@@ -39,6 +39,9 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 .bigbtn.danger{background:var(--danger);box-shadow:0 14px 34px -12px color-mix(in srgb,var(--danger) 75%,transparent)}
 .btn{border:none;width:100%;min-height:62px;padding:16px;border-radius:15px;cursor:pointer;font-weight:700;font-size:17px;display:flex;align-items:center;justify-content:center;gap:9px;margin-top:10px}
 .btn:active,.bigbtn:active,.cat:active,.seg button:active{transform:scale(.98)}
+.btn:focus-visible,.bigbtn:focus-visible,.cat:focus-visible,.chip:focus-visible{outline:3px solid var(--notice);outline-offset:3px}
+/* Respeta a quien pide menos movimiento en el sistema (WCAG 2.3.3). */
+@media (prefers-reduced-motion: reduce){.btn:active,.bigbtn:active,.cat:active,.seg button:active{transform:none}}
 .btn.danger{background:var(--danger);color:#fff}
 .btn.safe{background:var(--safe);color:#05130b}
 .btn.outline{background:var(--surface);color:var(--text);border:1.5px solid var(--border)}
@@ -72,6 +75,11 @@ input.text,textarea.text{width:100%;padding:14px;font-size:16px;border:1.5px sol
 .fallo{background:color-mix(in srgb,var(--danger) 14%,var(--surface));border:1.5px solid var(--danger);
   border-left-width:5px;border-radius:12px;padding:13px 14px;margin-top:12px;font-size:14px;line-height:1.45}
 .fallo b{color:var(--danger);display:block;font-size:15px;margin-bottom:3px}
+/* Aviso de que falta la ubicacion. Amarillo de precaucion, no rojo: el pedido
+   SI se puede enviar, solo llega con menos datos. */
+.nota-ubic{background:color-mix(in srgb,var(--caution) 12%,var(--surface));border:1.5px solid var(--caution);
+  border-left-width:5px;border-radius:12px;padding:11px 13px;margin-top:12px;font-size:13.5px;line-height:1.45;color:var(--text)}
+.nota-ubic b{color:var(--caution)}
 .confirm-ill{width:88px;height:88px;border-radius:50%;display:grid;place-items:center;margin:12px auto 18px;border:2.5px solid}
 .confirm-ill.danger{background:color-mix(in srgb,var(--danger) 14%,transparent);border-color:var(--danger)}.confirm-ill.danger svg{color:var(--danger);width:44px;height:44px}
 .confirm-ill.safe{background:color-mix(in srgb,var(--safe) 16%,transparent);border-color:var(--safe)}.confirm-ill.safe svg{color:var(--safe);width:44px;height:44px}
@@ -151,7 +159,9 @@ input.text,textarea.text{width:100%;padding:14px;font-size:16px;border:1.5px sol
     </div>
     <div id="escape" style="display:none;background:#161719;border:1.5px solid #4C9AFF;border-radius:13px;padding:13px 14px;margin-top:8px;font-size:13.5px;line-height:1.5"></div>
     <input class="text" id="lugar" placeholder="¿Sin GPS? Escribe el lugar (ej: Cra 12 # 4-30)" style="display:none">
-    <div id="fallo" class="fallo" style="display:none"></div>
+    <div id="fallo" class="fallo" role="alert" style="display:none"></div>
+    <!-- La ubicacion es opcional: se avisa, no se bloquea el pedido. -->
+    <div id="nota-ubic" class="nota-ubic" style="display:none">Vas a pedir ayuda <b>sin ubicación</b>. Puedes enviar igual. Si puedes, escribe el lugar arriba.</div>
     <button class="btn danger" id="send" onclick="enviar()" disabled><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>Pedir ayuda</button>
     <button class="btn ghost" onclick="go('home')">Cancelar</button>
   </section>
@@ -185,8 +195,9 @@ input.text,textarea.text{width:100%;padding:14px;font-size:16px;border:1.5px sol
       <div><div class="pl" id="here2-pl">Obteniendo ubicación…</div><div class="co" id="here2-co"></div></div>
       <span class="tag">GPS</span>
     </div>
+    <div id="fallo-salvo" class="fallo" role="alert" style="display:none"></div>
     <div class="spacer"></div>
-    <button class="btn safe" onclick="enviarSalvo()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>Reportarme a salvo</button>
+    <button class="btn safe" id="send-salvo" onclick="enviarSalvo()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>Reportarme a salvo</button>
     <button class="btn ghost" onclick="go('home')">Cancelar</button>
   </section>
 
@@ -253,8 +264,10 @@ function irASalvo(){ if(gpsRoto){ abrirEnChrome('salvo'); return; } go('salvo');
 
 function go(v){
   document.querySelectorAll('.view').forEach(function(e){e.classList.toggle('on', e.dataset.view===v)});
-  if(v==='pedir'){ pedirGps('here'); revisarListo(); }
-  if(v==='salvo'){ pedirGps('here2'); }
+  // Entrar limpio a una pantalla: un error de un intento anterior no debe
+  // seguir en rojo cuando la persona vuelve a empezar.
+  if(v==='pedir'){ limpiarFallo(); pedirGps('here'); revisarListo(); }
+  if(v==='salvo'){ limpiarFallo('fallo-salvo'); pedirGps('here2'); }
   if(v!=='enviado'){ pararSeguimiento(); }
   window.scrollTo(0,0);
 }
@@ -359,10 +372,31 @@ function actualizarContador(){ document.getElementById('msgcount').textContent=d
 document.getElementById('msg').addEventListener('input', actualizarContador);
 document.getElementById('lugar').addEventListener('input', revisarListo);
 
-// Habilita "Pedir ayuda" solo con categoria + (GPS o lugar escrito).
+// La ubicacion NO es obligatoria. Basta elegir la situacion.
+// Antes el boton exigia GPS o un lugar escrito. En una emergencia eso bloquea
+// el pedido justo cuando mas urge: el GPS del portal cautivo casi nunca
+// funciona, y alguien en panico no va a escribir una direccion. El centro
+// recibe el pedido igual y el nodo que lo transmite ya dice por donde entro.
+// El aviso de "sin ubicacion" se da al lado del boton, no apagandolo.
 function revisarListo(){
-  var tieneUbic = (S.lat && S.lon) || document.getElementById('lugar').value.trim().length>0;
-  document.getElementById('send').disabled = !(S.cat && tieneUbic);
+  var sinUbic = !(S.lat && S.lon) && document.getElementById('lugar').value.trim().length===0;
+  document.getElementById('send').disabled = !S.cat;
+  var nota=document.getElementById('nota-ubic');
+  if(nota) nota.style.display = (S.cat && sinUbic) ? 'block' : 'none';
+}
+
+// Feedback unico de "boton trabajando" para TODO el portal: lo deshabilita (no
+// acepta un segundo toque), cambia el texto y marca aria-busy para que un
+// lector de pantalla lo anuncie. Al terminar deja el boton como estaba, salga
+// bien o mal. Un solo helper evita que cada boton invente su propio feedback.
+// El propio disabled es el candado contra el doble toque: el navegador no
+// dispara click en un boton deshabilitado.
+async function pulsar(btn, textoOcupado, accion){
+  if(!btn) return accion();
+  var original=btn.innerHTML;
+  btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.textContent=textoOcupado;
+  try{ return await accion(); }
+  finally{ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=original; }
 }
 
 async function enviar(){
@@ -373,19 +407,16 @@ async function enviar(){
   // mensaje personalizado (o la subcategoria) para ayudar a ese triage.
   var body='accion=sos&cat='+S.cat+'&pri=&lat='+S.lat+'&lon='+S.lon+
            '&lugar='+encodeURIComponent(lugar)+'&detalle='+encodeURIComponent(detalle);
-  // Feedback mientras sale: el boton dice que esta trabajando y no acepta
-  // un segundo toque.
-  var btn=document.getElementById('send');
-  var textoBtn=btn.innerHTML;
-  btn.disabled=true; btn.textContent='Enviando…';
   limpiarFallo();
-  var envio = await postReporte(body);
-  btn.innerHTML=textoBtn; btn.disabled=false;
+  var envio = await pulsar(document.getElementById('send'), 'Enviando…', function(){ return postReporte(body); });
   // Si no salio, NO mostramos la pantalla de confirmacion: se queda aqui, con
   // lo escrito intacto, para reintentar.
   if(!envio.ok){ mostrarFallo(envio.error); return; }
   // Recap con feedback claro de lo enviado.
-  var ubic = (S.lat && S.lon) ? (S.lat+', '+S.lon+' (GPS ±'+S.acc+' m)') : lugar;
+  // Sin GPS y sin lugar escrito el recap salia vacio. Decirlo explicito es
+  // mejor: la persona ve que el pedido salio igual, y con que datos.
+  var ubic = (S.lat && S.lon) ? (S.lat+', '+S.lon+' (GPS ±'+S.acc+' m)')
+           : (lugar || 'Sin ubicación · te ubican por este punto de ayuda');
   document.getElementById('recap').innerHTML =
     fila('Situación', CATNOMBRE[S.cat]) +
     (detalle ? fila('Mensaje', detalle) : '') +
@@ -455,12 +486,16 @@ function iniciarSeguimiento(){
 function pararSeguimiento(){ if(seguimiento){ clearInterval(seguimiento); seguimiento=null; } }
 async function enviarSalvo(){
   var n=document.getElementById('s-nombre').value.trim(), d=document.getElementById('s-doc').value.trim();
-  if(!n||!d){ alert('Escribe tu nombre y documento.'); return; }
+  limpiarFallo('fallo-salvo');
+  // Antes esto usaba alert(), que bloquea la pagina entera y esconde el motivo
+  // detras de un modal. Ahora el aviso queda en pantalla, junto al formulario,
+  // sin borrar lo que la persona ya escribio.
+  if(!n||!d){ mostrarFallo('Escribe tu nombre y tu documento.', 'fallo-salvo', 'Faltan datos'); return; }
   var body='accion=ok&nombre='+encodeURIComponent(n)+'&doc='+encodeURIComponent(d)+'&lat='+S.lat+'&lon='+S.lon+'&lugar=';
-  var envio = await postReporte(body);
+  var envio = await pulsar(document.getElementById('send-salvo'), 'Enviando…', function(){ return postReporte(body); });
   // Mismo criterio que el SOS: sin confirmacion, no decimos que aviso.
   // Marcar "a salvo" a alguien que nunca salio de la lista es igual de grave.
-  if(!envio.ok){ alert('No salió tu aviso. ' + envio.error); return; }
+  if(!envio.ok){ mostrarFallo(envio.error, 'fallo-salvo', 'Tu aviso NO salió'); return; }
   var ubic = (S.lat && S.lon) ? (S.lat+', '+S.lon) : 'sin GPS';
   document.getElementById('recap-salvo').innerHTML =
     fila('Nombre', n) + fila('Documento', d) + filaMono('Ubicación', ubic);
@@ -481,14 +516,15 @@ async function postReporte(body){
   }
 }
 // Muestra el fallo en la misma pantalla, sin borrar lo que el usuario escribio,
-// para que pueda reintentar de una.
-function mostrarFallo(mensaje){
-  var caja=document.getElementById('fallo');
-  caja.innerHTML='<b>Tu pedido NO salió</b>'+esc(mensaje);
-  caja.style.display='block';
-  caja.scrollIntoView({block:'nearest'});
+// para que pueda reintentar de una. `caja` y `titulo` la reusan en la pantalla
+// de "estoy bien", que antes usaba alert().
+function mostrarFallo(mensaje, caja, titulo){
+  var el=document.getElementById(caja||'fallo'); if(!el) return;
+  el.innerHTML='<b>'+esc(titulo||'Tu pedido NO salió')+'</b>'+esc(mensaje);
+  el.style.display='block';
+  el.scrollIntoView({block:'nearest'});
 }
-function limpiarFallo(){ var c=document.getElementById('fallo'); if(c) c.style.display='none'; }
+function limpiarFallo(caja){ var c=document.getElementById(caja||'fallo'); if(c) c.style.display='none'; }
 function fila(k,v){ return '<div class="row"><span class="k">'+k+'</span><span class="v">'+esc(v)+'</span></div>'; }
 function filaMono(k,v){ return '<div class="row"><span class="k">'+k+'</span><span class="v mono">'+esc(v)+'</span></div>'; }
 function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}); }
