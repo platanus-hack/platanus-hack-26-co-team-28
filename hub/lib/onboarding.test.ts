@@ -95,8 +95,35 @@ describe("onboarding del nodo de recurso", () => {
     expect(prompt).toContain("https://github.com/platanus-hack/platanus-hack-26-co-team-28.git");
     expect(prompt).toContain("LoRa Maestro");
     expect(prompt).toContain("LoRa Esclavo");
+    expect(prompt).toContain("Acompañamiento guiado");
+    expect(prompt).toContain("Acompañamiento técnico");
+    expect(prompt).toContain("El Centro local es la autoridad operacional");
+    expect(prompt).toContain("https://woki-hub.vercel.app/api/sync");
+    expect(prompt).toContain("https://woki-lora-enclosures.vercel.app");
     expect(prompt).toContain("Nunca energices");
     expect(prompt).toContain("WOKI_SYNC_TOKEN");
+    expect(prompt).not.toContain("sk-ant-");
+    expect(prompt).not.toContain("sbp_");
+  });
+
+  test("ofrece un copiloto de compra contextual en el paso del inventario", async () => {
+    const inventory = resourceOnboarding().steps.find((step) => step.id === "inventory");
+    const prompt = await Bun.file(
+      new URL("../public/onboarding/WOKI-KIT-PURCHASE-PROMPT.md", import.meta.url),
+    ).text();
+
+    expect(inventory?.assistantPrompt).toEqual({
+      label: "Ayúdame a comprar el kit",
+      file: "/onboarding/WOKI-KIT-PURCHASE-PROMPT.md",
+      intro: "Busca stock y precios actuales cerca de ti, en tu moneda.",
+    });
+    expect(prompt).toContain("país, ciudad y código postal o barrio");
+    expect(prompt).toContain("moneda local");
+    expect(prompt).toContain("URL directa");
+    expect(prompt).toContain("Excluye de la tabla de compra productos agotados");
+    expect(prompt).toContain("TTGO LoRa32 T3 V1.6.1, banda 915 MHz");
+    expect(prompt).toContain("SMA estándar");
+    expect(prompt).toContain("PCM/BMS");
     expect(prompt).not.toContain("sk-ant-");
     expect(prompt).not.toContain("sbp_");
   });

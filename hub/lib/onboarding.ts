@@ -17,6 +17,7 @@ export type OnboardingStep = {
   documentationLabel?: string;
   resources?: { label: string; href: string }[];
   embed?: { title: string; src: string };
+  assistantPrompt?: { label: string; file: string; intro: string };
 };
 
 export type OnboardingGuide = {
@@ -92,6 +93,11 @@ export function resourceOnboarding(): OnboardingGuide {
         action: "Tengo estas piezas",
         documentation: "https://github.com/platanus-hack/platanus-hack-26-co-team-28/blob/main/lora-emergencia/docs/HARDWARE.md",
         documentationLabel: "Revisar hardware compatible",
+        assistantPrompt: {
+          label: "Ayúdame a comprar el kit",
+          file: "/onboarding/WOKI-KIT-PURCHASE-PROMPT.md",
+          intro: "Busca stock y precios actuales cerca de ti, en tu moneda.",
+        },
       },
       {
         id: "antenna",

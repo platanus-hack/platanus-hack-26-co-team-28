@@ -35,7 +35,10 @@ Variables requeridas:
 - `GET /api/onboarding/voice?step=...`: narración española con Eleven Multilingual v2.
 
 El onboarding no forma parte del menú operacional. Desde `Configuración` se puede volver a abrir
-desde el paso 1 cuando sea necesario preparar otro kit.
+desde el paso 1 cuando sea necesario preparar otro kit. Su encabezado permite copiar un prompt
+autocontenido para que ChatGPT o Claude acompañen tanto a una persona técnica como no técnica. El
+paso `Reconoce el kit` agrega otro prompt específico para comparar stock, compatibilidad, tiendas
+cercanas y costo total en la moneda local, sin incluir productos agotados.
 
 El endpoint acepta reintentos. Supabase aplica idempotencia mediante
 `woki_ingest_event`; una confirmación duplicada sigue siendo válida para vaciar la outbox local.
