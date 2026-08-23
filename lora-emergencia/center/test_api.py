@@ -702,6 +702,15 @@ class HttpSafetyTests(unittest.TestCase):
         center.validate_network_config("0.0.0.0", "secret")
         center.validate_network_config("127.0.0.1", "")
 
+    def test_public_demo_is_the_only_unauthenticated_non_loopback_mode(self):
+        center.validate_network_config("0.0.0.0", "", demo=True, public_demo=True)
+        with self.assertRaises(ValueError):
+            center.validate_network_config("0.0.0.0", "", public_demo=True)
+        with self.assertRaises(ValueError):
+            center.validate_network_config(
+                "0.0.0.0", "secret", demo=True, public_demo=True
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

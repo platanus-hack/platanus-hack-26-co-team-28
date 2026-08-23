@@ -518,7 +518,13 @@ def is_loopback_host(host):
         return False
 
 
-def validate_network_config(host, api_token):
+def validate_network_config(host, api_token, demo=False, public_demo=False):
+    if public_demo:
+        if not demo:
+            raise ValueError("--public-demo solo puede usarse junto con --demo")
+        if api_token.strip():
+            raise ValueError("--public-demo no debe combinarse con --api-token")
+        return
     if not is_loopback_host(host) and not api_token.strip():
         raise ValueError("--api-token es obligatorio al usar un host no loopback")
 
@@ -547,15 +553,21 @@ def main():
     parser.add_argument("--api-token", default="")
     parser.add_argument("--db", default="center.db")
     parser.add_argument("--demo", action="store_true")
+    parser.add_argument(
+        "--public-demo", action="store_true",
+        help="demo público efímero sin radio, persistencia ni autenticación",
+    )
     parser.add_argument("--sim", action="store_true",
                         help="demo con hardware: lee el gateway real pero simula el operador de grua")
     parser.add_argument("--center-lat", type=float, help="latitud fija configurada del puesto de mando")
     parser.add_argument("--center-lon", type=float, help="longitud fija configurada del puesto de mando")
     args = parser.parse_args()
     try:
-        validate_network_config(args.host, args.api_token)
+        validate_network_config(args.host, args.api_token, args.demo, args.public_demo)
     except ValueError as exc:
         parser.error(str(exc))
+    if args.public_demo and (args.serial or args.sim):
+        parser.error("--public-demo no permite puerto serial ni --sim")
 
     DEMO = args.demo
     API_TOKEN = args.api_token.strip()
@@ -563,6 +575,8 @@ def main():
     if args.demo:
         seed_demo(STORE)
         GATEWAY = DemoGateway()
+        if args.public_demo:
+            print("Modo demo público: datos sintéticos y efímeros; sin radio ni credenciales.")
     elif args.serial:
         GATEWAY = SerialGateway(args.serial, handle_gateway_line)
         GATEWAY.start()
