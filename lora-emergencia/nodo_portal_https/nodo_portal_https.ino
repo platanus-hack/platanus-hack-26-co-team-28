@@ -308,15 +308,30 @@ String pageHttp() {
   h += ".cat:active{transform:scale(.98);border-color:#4C9AFF}";
   h += ".cat:focus-visible{outline:3px solid #4C9AFF;outline-offset:3px}";
   h += ".cat svg{width:30px;height:30px}";
+  h += ".cat.sel{border-color:#4C9AFF;background:#1B2432;box-shadow:0 0 0 1.5px #4C9AFF inset}";
   h += ".cat .fa{width:32px;height:32px;border-radius:7px;background:#2FBF71;display:grid;place-items:center}.cat .fa svg{width:20px;height:20px;color:#fff}";
   h += ".wide{grid-column:1/-1}";
+  // Detalle opcional: subtipo, mensaje y lugar escrito. Alimentan el triage.
+  h += ".lab{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#9AA0A6;margin:20px 0 8px}";
+  h += ".chips{display:flex;flex-wrap:wrap;gap:8px}";
+  h += ".chip{-webkit-appearance:none;appearance:none;font:inherit;background:#161719;border:1.5px solid #2E3033;color:#F1F3F4;";
+  h += "border-radius:20px;padding:10px 14px;min-height:44px;font-size:14px;font-weight:600;cursor:pointer}";
+  h += ".chip.sel{border-color:#4C9AFF;background:#1B2432;color:#fff}";
+  h += ".chip:active{transform:scale(.98)}.chip:focus-visible{outline:3px solid #4C9AFF;outline-offset:3px}";
+  // 16px es el minimo: por debajo, iOS hace auto-zoom y rompe el layout.
+  h += ".txt{width:100%;background:#161719;border:1.5px solid #2E3033;color:#F1F3F4;border-radius:13px;";
+  h += "padding:13px 14px;font:16px/1.45 inherit;margin-top:10px}";
+  h += ".txt:focus{outline:none;border-color:#4C9AFF}";
+  h += "textarea.txt{min-height:76px;resize:vertical}";
   // El GPS es una mejora opcional y va PLEGADO, debajo de la accion.
   h += "details{margin-top:22px;background:#161719;border:1.5px solid #2E3033;border-radius:13px;padding:2px 14px}";
   h += "summary{padding:13px 0;font-size:14.5px;font-weight:700;color:#4C9AFF;cursor:pointer;min-height:44px;display:flex;align-items:center}";
   h += ".step{border-top:1px solid #2E3033;padding:11px 0;font-size:13.5px;color:#C9CCCE}.step b{color:#4C9AFF}";
   h += ".sp{flex:1}";
-  h += "a.go{display:block;background:#FF4438;color:#fff;padding:20px;border-radius:18px;text-decoration:none;text-align:center;font-weight:800;font-size:19px;min-height:56px}";
-  h += "a.go small{display:block;font-weight:500;font-size:13px;opacity:.95;margin-top:4px}";
+  h += ".go{display:block;width:100%;-webkit-appearance:none;appearance:none;border:0;background:#FF4438;color:#fff;padding:20px;";
+  h += "border-radius:18px;text-decoration:none;text-align:center;font-family:inherit;font-weight:800;font-size:19px;min-height:56px;margin-top:22px;cursor:pointer}";
+  h += ".go small{display:block;font-weight:500;font-size:13px;opacity:.95;margin-top:4px}";
+  h += ".go:active{transform:scale(.99)}.go:focus-visible{outline:3px solid #fff;outline-offset:3px}";
   h += ".msg{color:#9AA0A6;text-align:center;margin:18px 0;font-size:15px}";
   h += "@media (prefers-reduced-motion: reduce){.cat:active{transform:none}}";
   h += "</style></head><body><div class='w'>";
@@ -324,16 +339,31 @@ String pageHttp() {
   h += "<div class='sub'>Estás conectado. No necesitas internet.</div>";
 
   // ---- iOS: pedir ayuda AQUI MISMO, sin GPS ----
+  // Mismos 2 pasos que el portal HTTPS: situacion, y luego detalle opcional.
+  // Un intento anterior mandaba el SOS con el primer toque, de un solo paso.
+  // Salia mas rapido, pero perdia el subtipo y el mensaje, que son justo lo
+  // que alimenta el triage del centro. Y aqui pesa mas todavia: sin GPS, el
+  // texto del lugar es la unica pista de donde esta la persona.
   h += "<div id='ios' hidden>";
   h += "<div class='lead'>¿Qué está pasando?</div>";
-  h += "<form class='cats' method='POST' action='/report'>";
+  h += "<form method='POST' action='/report' id='f'>";
   h += "<input type='hidden' name='accion' value='sos'>";
-  h += "<button class='cat' name='cat' value='RESCATE'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7'><circle cx='12' cy='7' r='3'/><path d='M5.5 21c0-4 2.9-6.5 6.5-6.5s6.5 2.5 6.5 6.5'/></svg><span>Persona atrapada</span></button>";
-  h += "<button class='cat' name='cat' value='MEDICO'><span class='fa'><svg viewBox='0 0 24 24' fill='currentColor'><path d='M9 3h6v6h6v6h-6v6H9v-6H3V9h6z'/></svg></span><span>Persona herida</span></button>";
-  h += "<button class='cat' name='cat' value='FUEGO'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7'><path d='M12 2c1 3-2 4-2 7a2 2 0 0 0 4 0c2 2 3 3.5 3 6a5 5 0 0 1-10 0c0-3 3-4 5-13z'/></svg><span>Incendio</span></button>";
-  h += "<button class='cat' name='cat' value='AGUA'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><path d='M12 2s6.5 7 6.5 11.5a6.5 6.5 0 0 1-13 0C5.5 9 12 2 12 2z'/></svg><span>Inundación</span></button>";
-  h += "<button class='cat wide' name='cat' value='GRUA'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7'><path d='M3 17h13v-4l4 1v3h1M5 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM16 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM3 13V8h7l3 3'/></svg><span>Vía o vehículo bloqueado</span></button>";
-  h += "</form>";
+  h += "<input type='hidden' name='cat' id='cat' value=''>";
+  h += "<div class='cats' id='cats'>";
+  h += "<button type='button' class='cat' data-cat='RESCATE'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7'><circle cx='12' cy='7' r='3'/><path d='M5.5 21c0-4 2.9-6.5 6.5-6.5s6.5 2.5 6.5 6.5'/></svg><span>Persona atrapada</span></button>";
+  h += "<button type='button' class='cat' data-cat='MEDICO'><span class='fa'><svg viewBox='0 0 24 24' fill='currentColor'><path d='M9 3h6v6h6v6h-6v6H9v-6H3V9h6z'/></svg></span><span>Persona herida</span></button>";
+  h += "<button type='button' class='cat' data-cat='FUEGO'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7'><path d='M12 2c1 3-2 4-2 7a2 2 0 0 0 4 0c2 2 3 3.5 3 6a5 5 0 0 1-10 0c0-3 3-4 5-13z'/></svg><span>Incendio</span></button>";
+  h += "<button type='button' class='cat' data-cat='AGUA'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8'><path d='M12 2s6.5 7 6.5 11.5a6.5 6.5 0 0 1-13 0C5.5 9 12 2 12 2z'/></svg><span>Inundación</span></button>";
+  h += "<button type='button' class='cat wide' data-cat='GRUA'><svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.7'><path d='M3 17h13v-4l4 1v3h1M5 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM16 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM3 13V8h7l3 3'/></svg><span>Vía o vehículo bloqueado</span></button>";
+  h += "</div>";
+  h += "<div id='det' hidden>";
+  h += "<div class='lab'>Detalle (opcional)</div>";
+  h += "<div class='chips' id='chips'></div>";
+  h += "<textarea class='txt' name='detalle' id='msg' maxlength='100' placeholder='Escribe un mensaje para el puesto de mando (opcional)'></textarea>";
+  h += "<div class='lab'>¿Dónde estás? (opcional)</div>";
+  h += "<input class='txt' name='lugar' id='lugar' maxlength='60' placeholder='Ej: Cra 12 # 4-30, o un punto conocido'>";
+  h += "<button class='go' type='submit' id='send'>Pedir ayuda</button>";
+  h += "</div></form>";
   h += "<details><summary>Mandar también mi ubicación GPS (opcional)</summary>";
   h += "<div class='step'>Esta pantalla de iPhone no puede leer el GPS. Pide ayuda arriba primero: llega igual.</div>";
   h += "<div class='step'><b>1.</b> Toca <b>Cancelar</b> arriba a la derecha.</div>";
@@ -347,10 +377,40 @@ String pageHttp() {
   h += "</div><script>";
   h += "var HTTPS='" + https + "';var INTENT=\"" + intent + "\";";
   h += "var ua=navigator.userAgent,isiOS=/iPhone|iPad|iPod/i.test(ua),isAnd=/Android/i.test(ua);";
-  h += "if(isiOS){document.getElementById('ios').hidden=false;}";
+  h += "if(isiOS){document.getElementById('ios').hidden=false;armar();}";
   h += "else if(isAnd){var a=document.getElementById('and');a.hidden=false;";
   h += "document.getElementById('andlink').href=INTENT;setTimeout(function(){location.replace(HTTPS);},400);}";
   h += "else{location.replace(HTTPS);}";
+  // Mismos subtipos y nombres que el portal HTTPS, para que la persona vea la
+  // misma pantalla si despues salta a Safari.
+  h += "function armar(){";
+  h += "var SUB={RESCATE:['bajo escombros','consciente','varias personas'],";
+  h += "MEDICO:['inconsciente','hemorragia','fractura'],";
+  h += "FUEGO:['gente dentro','olor a gas'],";
+  h += "AGUA:['atrapado por el agua','falta agua potable'],";
+  h += "GRUA:['carro volcado','escombro en vía','árbol caído']};";
+  h += "var NOM={RESCATE:'Persona atrapada',MEDICO:'Persona herida',FUEGO:'Incendio',AGUA:'Inundación',GRUA:'Vía o vehículo bloqueado'};";
+  h += "var cats=document.getElementById('cats'),chips=document.getElementById('chips');";
+  h += "var det=document.getElementById('det'),campo=document.getElementById('cat'),msg=document.getElementById('msg');";
+  h += "cats.addEventListener('click',function(e){";
+  h += "var b=e.target.closest('.cat');if(!b)return;var c=b.dataset.cat;campo.value=c;";
+  h += "var todos=cats.querySelectorAll('.cat');for(var i=0;i<todos.length;i++)todos[i].classList.toggle('sel',todos[i]===b);";
+  h += "var lista=SUB[c]||[],html='';";
+  h += "for(var j=0;j<lista.length;j++)html+=\"<button type='button' class='chip' data-sub='\"+lista[j]+\"'>\"+lista[j]+'</button>';";
+  h += "chips.innerHTML=html;msg.value='';det.hidden=false;";
+  h += "document.getElementById('send').textContent='Pedir ayuda · '+NOM[c];";
+  h += "det.scrollIntoView({block:'nearest'});});";
+  // Tocar un subtipo lo escribe en el mensaje. Se puede editar o borrar.
+  h += "chips.addEventListener('click',function(e){";
+  h += "var b=e.target.closest('.chip');if(!b)return;";
+  h += "var todos=chips.querySelectorAll('.chip');for(var i=0;i<todos.length;i++)todos[i].classList.toggle('sel',todos[i]===b);";
+  h += "msg.value=b.dataset.sub;});";
+  // Feedback al enviar: el POST recarga la pagina entera y puede tardar lo que
+  // tarde la radio. Sin esto, la persona no sabe si su toque quedo registrado.
+  h += "document.getElementById('f').addEventListener('submit',function(){";
+  h += "var s=document.getElementById('send');s.setAttribute('aria-busy','true');s.textContent='Enviando…';";
+  h += "setTimeout(function(){s.disabled=true;},0);});";
+  h += "}";
   h += "</script></body></html>";
   return h;
 }
