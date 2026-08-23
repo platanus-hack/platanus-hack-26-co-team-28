@@ -61,17 +61,22 @@ const ago = (value) => {
 const priorityBadge = (value) => `<span class="badge ${value === 0 ? "critical" : value === 1 ? "warning" : ""}">Prioridad ${value}</span>`;
 const stateBadge = (value) => `<span class="badge ${value === "disponible" || value === "RESUELTA" ? "success" : value === "CANCELADA" ? "critical" : ""}">${escapeHtml(value)}</span>`;
 const empty = (message) => `<div class="empty">${escapeHtml(message)}</div>`;
-// 2 perfiles distintos en 2 apps distintas. Cada chip lleva su propia etiqueta
-// ("Operador de grúa" / "Operador de centro") para que el tipo nunca sea
-// ambiguo, sin importar en qué sección de la pantalla aparezca:
+// 2 clases de persona, cada una con su etiqueta propia, para que el tipo nunca
+// sea ambiguo sin importar en qué sección de la pantalla aparezca:
 // - OPERADOR_CENTRO: quien opera ESTE dashboard (puesto de mando). Aparece en
 //   el topbar y en la seccion "Acción humana" (tomar/resolver/cancelar).
-// - RESPONSABLE_GRUA: el conductor de la grua GRUA07 (app separada grua.html).
-//   Aparece en el tag "Asignado" de la solicitud y en la seccion "Solicitar
-//   grúa" cuando el recurso elegido es GRUA07.
+// - La persona a cargo de cada unidad vive en operadores.js, compartido con la
+//   vista de operador. Aparece en el tag "Asignado" de la solicitud y en el
+//   chip del despacho, siempre segun la unidad elegida.
 const OPERADOR_CENTRO = "Juan Ortega";
-const RESPONSABLE_GRUA = "Manuel Vargas";
-const assignedTag = (name) => `<span class="badge success">Asignado: ${escapeHtml(name)}</span>`;
+// Responsable de la solicitud: la persona a cargo de la unidad que se le
+// asigno. Mientras no haya unidad asignada no hay responsable, y decir un
+// nombre fijo ahi es enganoso.
+const assignedTag = (resourceNode) => {
+  if (!resourceNode) return `<span class="badge">Sin asignar</span>`;
+  const operador = window.operadorDe(resourceNode);
+  return `<span class="badge success" title="${escapeHtml(operador.rol)} · ${escapeHtml(resourceNode)}">Asignado: ${escapeHtml(operador.nombre)}</span>`;
+};
 const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 // Chip de un usuario ya guardado (no un input de texto libre). Se ve como un tag
 // con avatar de iniciales, tipo de operador y detalle; queda pre-seteado. Un
@@ -79,18 +84,14 @@ const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0])
 // funcionando igual. `label` es el TIPO de operador (va en el <label> del campo,
 // visible antes del chip) y `detail` es el subtitulo dentro del chip.
 const operadorTag = (label, name, detail) => `<div class="field"><label>${escapeHtml(label)}</label><div class="user-tag"><span class="user-tag-avatar">${escapeHtml(initials(name))}</span><span class="user-tag-body"><span class="user-tag-name">${escapeHtml(name)}</span><span class="user-tag-role">${escapeHtml(detail)}</span></span><input type="hidden" name="actor" value="${escapeHtml(name)}"></div></div>`;
-// Recursos con un operador humano real detras de una app propia (hoy solo
-// GRUA07 -> grua.html -> Manuel Vargas, que acepta y avanza el estado por
-// ACC/ST). El resto (sembrados por scripts/sembrar_recursos.py) son solo
-// datos simulados: si se despachan, nadie responde y quedan en DESPACHADA.
-// RECURSOS_CON_OPERADOR se deriva de este mapa (una sola fuente de verdad),
-// para que el badge "Simulado" y el chip de operador nunca queden desincronizados.
-const OPERADOR_POR_RECURSO = {
-  GRUA07: { name: RESPONSABLE_GRUA, detail: "Conductor asignado · GRUA07" },
-};
-const RECURSOS_CON_OPERADOR = new Set(Object.keys(OPERADOR_POR_RECURSO));
-const esRecursoSimulado = (node) => !RECURSOS_CON_OPERADOR.has(node);
-const simuladoBadge = (node) => esRecursoSimulado(node) ? ` <span class="badge" title="Datos sembrados para el demo, sin operador real detrás">Simulado</span>` : "";
+// Cada unidad tiene una persona a cargo. La tabla vive en operadores.js,
+// compartida con la vista de operador (grua.js). Toda unidad se puede operar
+// desde /grua?nodo=NODO, así que despachar a cualquiera avanza igual.
+// "Sembrada" marca las unidades de relleno del demo frente a GRUA07, que es la
+// del guion. Ninguna tiene placa LoRa propia: el único enlace de radio real es
+// el nodo del ciudadano hacia el gateway del centro.
+const esRecursoSimulado = (node) => window.operadorDe(node).sembrado;
+const simuladoBadge = (node) => esRecursoSimulado(node) ? ` <span class="badge" title="Unidad de relleno para el demo. Se opera igual que las demás, desde su vista de operador.">Sembrada</span>` : "";
 // Espejo de triage.RESOURCE_MAX_AGE_SECONDS. Un recurso sin contacto reciente
 // sigue marcado "disponible" (su último estado conocido), pero el triage deja
 // de proponerlo: puede estar sin batería o fuera de alcance. Sin este aviso la
@@ -98,14 +99,12 @@ const simuladoBadge = (node) => esRecursoSimulado(node) ? ` <span class="badge" 
 const RESOURCE_MAX_AGE_SECONDS = 600;
 const sinContacto = (item) => ageSeconds(item.last_seen) > RESOURCE_MAX_AGE_SECONDS;
 const sinContactoBadge = (item) => sinContacto(item) ? ` <span class="badge warning" title="Sin contacto hace más de 10 minutos: el triage no lo propone para despacho">Sin contacto</span>` : "";
-// El chip de "Solicitar grúa" cambia segun el recurso elegido en el
-// desplegable: si tiene operador real, muestra a esa persona (ej. Manuel
-// Vargas para GRUA07); si es un recurso simulado, el despacho lo autoriza el
-// operador del centro (no hay nadie mas a quien atribuirselo).
+// El chip del despacho cambia segun el recurso elegido en el desplegable, y
+// muestra a la persona a cargo de ESA unidad: es quien va a recibir la
+// asignacion y aceptarla desde su vista de operador.
 function chipOperadorParaRecurso(node) {
-  const real = OPERADOR_POR_RECURSO[node];
-  if (real) return operadorTag("Operador de grúa", real.name, real.detail);
-  return operadorTag("Operador de centro", OPERADOR_CENTRO, `Despacha ${node} · recurso simulado, sin operador propio`);
+  const operador = window.operadorDe(node);
+  return operadorTag("Unidad asignada", operador.nombre, `${operador.rol} · ${node}`);
 }
 
 async function api(path, options = {}) {
@@ -804,7 +803,7 @@ async function openRequest(id) {
     // candado del backend exige que el tipo del recurso coincida con la categoría).
     const canDispatch = ["PENDIENTE", "EN_REVISION"].includes(request.state) && !request.resource_node && triage.candidates.length;
     document.querySelector("#drawer-content").innerHTML = `
-      <section class="detail-section"><h3>Solicitud #${request.id}</h3><dl class="key-values"><dt>Categoría</dt><dd>${escapeHtml(request.category)}</dd><dt>Estado</dt><dd>${stateBadge(request.state)}</dd><dt>Responsable</dt><dd>${assignedTag(RESPONSABLE_GRUA)}</dd><dt>Origen</dt><dd class="mono">${escapeHtml(request.node)} / ${request.seq}</dd><dt>Lugar</dt><dd>${escapeHtml(request.place || "Sin lugar")}</dd><dt>GPS</dt><dd>${validCoordinate(request.lat, request.lon) ? `<span class="mono">${escapeHtml(request.lat)}, ${escapeHtml(request.lon)}</span> · <a href="#overview" class="link">Ver en el mapa</a>` : "Sin GPS"}</dd><dt>Detalle</dt><dd>${escapeHtml(request.detail || "Sin detalle")}</dd><dt>Radio</dt><dd class="mono">RSSI ${escapeHtml(request.rssi || "—")} · SNR ${escapeHtml(request.snr || "—")}</dd></dl></section>
+      <section class="detail-section"><h3>Solicitud #${request.id}</h3><dl class="key-values"><dt>Categoría</dt><dd>${escapeHtml(request.category)}</dd><dt>Estado</dt><dd>${stateBadge(request.state)}</dd><dt>Responsable</dt><dd>${assignedTag(request.resource_node)}</dd><dt>Origen</dt><dd class="mono">${escapeHtml(request.node)} / ${request.seq}</dd><dt>Lugar</dt><dd>${escapeHtml(request.place || "Sin lugar")}</dd><dt>GPS</dt><dd>${validCoordinate(request.lat, request.lon) ? `<span class="mono">${escapeHtml(request.lat)}, ${escapeHtml(request.lon)}</span> · <a href="#overview" class="link">Ver en el mapa</a>` : "Sin GPS"}</dd><dt>Detalle</dt><dd>${escapeHtml(request.detail || "Sin detalle")}</dd><dt>Radio</dt><dd class="mono">RSSI ${escapeHtml(request.rssi || "—")} · SNR ${escapeHtml(request.snr || "—")}</dd></dl></section>
       <section class="detail-section"><h3>Triage explicable</h3><div class="review"><div class="list-line">${priorityBadge(triage.priority)} <span class="muted">Reportada: ${request.priority}</span></div><p>${triage.reasons.map(escapeHtml).join(" · ")}</p>${triage.alerts.length ? `<p class="badge warning">${triage.alerts.map(escapeHtml).join(" · ")}</p>` : ""}</div></section>
       <section class="detail-section"><h3>Candidatos</h3>${triage.candidates.length ? `<div class="list">${triage.candidates.map((item) => `<div class="list-item"><strong class="mono">${escapeHtml(item.node)}</strong>${simuladoBadge(item.node)}<div class="cell-sub">${item.distance_km == null ? "Distancia desconocida (sin GPS reciente)" : `${item.distance_km} km`} · disponible · contacto hace ${item.last_seen_seconds} s</div></div>`).join("")}</div>` : empty("Sin candidatos elegibles")}</section>
       ${canDispatch ? dispatchForm(request, triage.candidates, triage.recommended_resource.node) : ""}
@@ -877,7 +876,7 @@ async function renderResources() {
 }
 function resourcesTable(items) {
   if (!items.length) return empty("No hay recursos con estos filtros");
-  return `<div class="table-wrap"><table><thead><tr><th>Nodo / tipo</th><th>Estado</th><th>Zona</th><th>Heartbeat</th><th>Posición</th><th>Radio</th></tr></thead><tbody>${items.map((item) => `<tr><td><div class="cell-main mono">${escapeHtml(item.node)}${simuladoBadge(item.node)}</div><div class="cell-sub">${escapeHtml(item.kind)}</div></td><td>${stateBadge(item.state)}${sinContactoBadge(item)}</td><td>${escapeHtml(item.zone)}</td><td>${ago(item.last_seen)}</td><td>${item.position_seen_at ? `${ago(item.position_seen_at)}<div class="cell-sub mono">${escapeHtml(item.lat)}, ${escapeHtml(item.lon)} · ±${escapeHtml(item.accuracy || "—")} m</div>` : "Sin posición"}</td><td class="mono">RSSI ${escapeHtml(item.rssi || "—")}<br>SNR ${escapeHtml(item.snr || "—")}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Nodo / tipo</th><th>Estado</th><th>Zona</th><th>Heartbeat</th><th>Posición</th><th>Radio</th><th>Operador</th></tr></thead><tbody>${items.map((item) => `<tr><td><div class="cell-main mono">${escapeHtml(item.node)}${simuladoBadge(item.node)}</div><div class="cell-sub">${escapeHtml(item.kind)}</div></td><td>${stateBadge(item.state)}${sinContactoBadge(item)}</td><td>${escapeHtml(item.zone)}</td><td>${ago(item.last_seen)}</td><td>${item.position_seen_at ? `${ago(item.position_seen_at)}<div class="cell-sub mono">${escapeHtml(item.lat)}, ${escapeHtml(item.lon)} · ±${escapeHtml(item.accuracy || "—")} m</div>` : "Sin posición"}</td><td class="mono">RSSI ${escapeHtml(item.rssi || "—")}<br>SNR ${escapeHtml(item.snr || "—")}</td><td><a class="button" href="/grua?nodo=${encodeURIComponent(item.node)}" target="_blank" rel="noopener" title="Abre la vista de este recurso para aceptar y avanzar sus asignaciones">Abrir vista ↗</a></td></tr>`).join("")}</tbody></table></div>`;
 }
 
 async function renderNetwork() {

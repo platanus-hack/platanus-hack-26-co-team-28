@@ -66,7 +66,7 @@
   <div class="app">
     <div class="hd">
       <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 17h13v-4l4 1v3h1M5 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM16 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM3 13V8h7l3 3"/></svg>
-      <div><h1>Manuel Vargas · GRUA07</h1><div class="sub"><span class="dot" id="status-dot"></span><span id="status">Fuera de servicio</span></div></div>
+      <div><h1 id="titulo">Cargando…</h1><div class="sub"><span class="dot" id="status-dot"></span><span id="status">Fuera de servicio</span> · <span id="subtitulo"></span></div></div>
     </div>
     <button class="btn conn" id="connect" type="button">Entrar en servicio</button>
     <div id="error" class="error"></div>
@@ -74,6 +74,7 @@
     <div class="spacer"></div>
     <div class="foot">Recibes asignaciones del puesto de mando por radio LoRa.</div>
   </div>
+  <script src="/operadores.js"></script>
   <script src="/grua.js"></script>
 </body>
 </html>

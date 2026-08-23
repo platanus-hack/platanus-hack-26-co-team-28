@@ -1,11 +1,29 @@
-// App del operador de grúa (simulador sin 3ra placa). Se carga como script
-// externo (no inline) para que la automatización/CDP pueda ejercerla, igual que
-// el dashboard (app.js). Envía frames ACC/ST por el simulador del centro.
-const resource = "GRUA07";
+// App del operador de un recurso (simulador sin una placa por unidad). Se carga
+// como script externo (no inline) para que la automatización/CDP pueda
+// ejercerla, igual que el dashboard (app.js). Envía frames ACC/ST por el
+// simulador del centro.
+//
+// Sirve para CUALQUIER recurso, no solo la grúa: /grua?nodo=MEDICO01 opera esa
+// ambulancia. Sin el parámetro abre GRUA07, que es el comportamiento de antes.
+// Sin esto, despachar a un recurso sin app dejaba la solicitud en DESPACHADA
+// para siempre: nadie podía aceptarla y el ciudadano se quedaba en "Ayuda en
+// camino".
+const resource = (new URLSearchParams(location.search).get("nodo") || "GRUA07").toUpperCase();
+// Quién opera esta unidad. La tabla vive en operadores.js, compartida con el
+// dashboard, para que el nombre no quede duplicado en 2 archivos.
+const operador = window.operadorDe(resource);
+const tituloRecurso = `${operador.nombre} · ${resource}`;
 const token = sessionStorage.getItem("apiToken") || "";
-const SERVICIO_KEY = "grua_en_servicio";
+// La clave lleva el nodo: entrar en servicio con una ambulancia no debe cambiar
+// el estado de la grúa en el mismo navegador.
+const SERVICIO_KEY = `servicio_${resource}`;
 let enServicio = false;
 let hbTimer = null;
+// Categorías que atiende este recurso. Se leen del centro al arrancar, así el
+// latido no las degrada (hardcodear "GRUA,RESCATE" borraba el tipo real de
+// cualquier otro nodo).
+let resourceKind = "GRUA,RESCATE";
+let resourceZone = "NORTE";
 let messageId = Date.now() % 1000000;
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[char]));
 
@@ -31,15 +49,15 @@ async function sendFrame(kind, payload) {
   });
 }
 
-// El operador de grúa entra/sale de servicio a propósito (como una unidad que
-// reporta disponibilidad). Entrar manda un HB que registra la grúa como
-// GRUA,RESCATE disponible (atiende su categoria propia -via/vehiculo
-// bloqueado- y tambien rescates con maquinaria pesada); un latido periódico
-// la mantiene reciente para el triage. El estado se recuerda en el
-// navegador, así una recarga NO cae a "fuera de servicio".
+// El operador entra/sale de servicio a propósito (como una unidad que reporta
+// disponibilidad). Entrar manda un HB que registra el recurso como disponible
+// con SUS categorías (leídas del centro, no fijas); un latido periódico lo
+// mantiene reciente para el triage, que descarta lo que lleve más de 10 min
+// sin contacto. El estado se recuerda en el navegador, así una recarga NO cae
+// a "fuera de servicio".
 async function entrarServicio() {
   try {
-    await sendFrame("HB", ["GRUA,RESCATE", "NORTE", "-", "1"]);
+    await sendFrame("HB", [resourceKind, resourceZone, "-", "1"]);
     enServicio = true;
     try { localStorage.setItem(SERVICIO_KEY, "1"); } catch (e) { /* almacenamiento no disponible */ }
     setStatus("En servicio · esperando asignaciones", "ok");
@@ -48,7 +66,7 @@ async function entrarServicio() {
     btn.className = "btn salir";
     document.querySelector("#error").textContent = "";
     if (hbTimer) clearInterval(hbTimer);
-    hbTimer = setInterval(() => { sendFrame("HB", ["GRUA,RESCATE", "NORTE", "-", "1"]).catch(() => {}); }, 60000);
+    hbTimer = setInterval(() => { sendFrame("HB", [resourceKind, resourceZone, "-", "1"]).catch(() => {}); }, 60000);
     tick();
   } catch (error) {
     document.querySelector("#error").textContent = error.message;
@@ -189,5 +207,25 @@ document.querySelector("#list").addEventListener("click", async (event) => {
   }
 });
 setInterval(tick, 2000);
-// Al cargar: si el operador ya estaba en servicio, lo retomamos (reenvia el HB).
-try { if (localStorage.getItem(SERVICIO_KEY) === "1") entrarServicio(); } catch (e) { /* sin almacenamiento */ }
+
+// Arranque: pone el nombre del recurso en pantalla y lee sus categorías reales
+// del centro, para que el latido no las degrade. Si el recurso no existe
+// todavía, se queda con los valores por defecto y el HB lo registra.
+async function iniciar() {
+  document.title = tituloRecurso;
+  const titulo = document.querySelector("#titulo");
+  if (titulo) titulo.textContent = tituloRecurso;
+  try {
+    const data = await api("/api/v1/resources");
+    const encontrado = (data.items || []).find((item) => item.node === resource);
+    if (encontrado) {
+      if (encontrado.kind) resourceKind = encontrado.kind;
+      if (encontrado.zone) resourceZone = encontrado.zone;
+      const sub = document.querySelector("#subtitulo");
+      if (sub) sub.textContent = `${operador.rol} · ${resourceKind}`;
+    }
+  } catch (error) { /* el centro dirá el motivo al entrar en servicio */ }
+  // Si el operador ya estaba en servicio, lo retomamos (reenvía el HB).
+  try { if (localStorage.getItem(SERVICIO_KEY) === "1") entrarServicio(); } catch (e) { /* sin almacenamiento */ }
+}
+iniciar();

@@ -39,6 +39,7 @@ STATIC_FILES = {
     "/theme.js": ("theme.js", "text/javascript; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/grua.js": ("grua.js", "text/javascript; charset=utf-8"),
+    "/operadores.js": ("operadores.js", "text/javascript; charset=utf-8"),
     "/vendor/leaflet-1.9.4.css": ("vendor/leaflet.css", "text/css; charset=utf-8"),
     "/vendor/leaflet-1.9.4.js": ("vendor/leaflet.js", "text/javascript; charset=utf-8"),
     "/vendor/leaflet-vectorgrid-1.3.0.js": ("vendor/leaflet-vectorgrid.js", "text/javascript; charset=utf-8"),
