@@ -1,4 +1,4 @@
-export type OnboardingStepId = "source" | "inventory" | "antenna" | "master" | "slave" | "local-wifi" | "verify" | "enclosures";
+export type OnboardingStepId = "source" | "network-flow" | "inventory" | "antenna" | "master" | "slave" | "local-wifi" | "verify" | "enclosures";
 
 export type OnboardingStep = {
   id: OnboardingStepId;
@@ -16,6 +16,7 @@ export type OnboardingStep = {
   documentation?: string;
   documentationLabel?: string;
   resources?: { label: string; href: string }[];
+  embed?: { title: string; src: string };
 };
 
 export type OnboardingGuide = {
@@ -50,6 +51,28 @@ export function resourceOnboarding(): OnboardingGuide {
         command: "git clone https://github.com/platanus-hack/platanus-hack-26-co-team-28.git\ncd platanus-hack-26-co-team-28",
         documentation: "https://github.com/platanus-hack/platanus-hack-26-co-team-28",
         documentationLabel: "Abrir repositorio",
+      },
+      {
+        id: "network-flow",
+        blocking: false,
+        eyebrow: "Antes del hardware",
+        title: "Entiende cómo se conecta WOKI",
+        instruction: "Sigue el recorrido de una solicitud desde el celular hasta el Centro de Comando.",
+        image: "/onboarding/lora-interaction.jpg",
+        imageWidth: 1710,
+        imageHeight: 865,
+        imageAlt: "Diagrama de la interacción entre celulares, Wi-Fi local, nodos TTGO, LoRa, Gateway y Centro de Comando",
+        facts: [
+          "El celular se conecta al Wi-Fi local del nodo",
+          "LoRa 915 MHz transporta mensajes sin internet",
+          "Internet solo sincroniza la réplica cuando está disponible",
+        ],
+        action: "Entiendo la conexión",
+        documentation: "https://github.com/platanus-hack/platanus-hack-26-co-team-28/blob/main/docs/ARQUITECTURA-CONEXIONES.md",
+        documentationLabel: "Abrir arquitectura",
+        resources: [
+          { label: "Ver interacción", href: "https://lora.uprizing.me/" },
+        ],
       },
       {
         id: "inventory",
@@ -173,24 +196,28 @@ export function resourceOnboarding(): OnboardingGuide {
       {
         id: "enclosures",
         blocking: false,
-        eyebrow: "Montaje opcional",
-        title: "Protege el kit con piezas 3D",
-        instruction: "Explora las piezas imprimibles para ordenar el Centro y proteger el nodo de campo.",
+        eyebrow: "Extensión física opcional",
+        title: "Imprime las piezas del kit",
+        instruction: "Fuera del setup de software y hardware: descarga los modelos listos para laminar e imprimir.",
         image: "/onboarding/enclosures-assembled.jpg",
         imageWidth: 1672,
         imageHeight: 941,
         imageAlt: "Visualización referencial del Centro WOKI y un nodo de campo ensamblados con piezas impresas en 3D",
         facts: [
-          "Centro: marco, pies y bandejas para electrónica y energía",
-          "Nodo: bandeja impresa dentro de una caja comercial resistente",
+          "8 geometrías y 16 archivos STL + 3MF descargables",
+          "Centro, nodo de demo y bandeja para caja comercial",
           "Valida medidas y ajustes físicos antes del uso real",
         ],
         action: "Finalizar preparación",
         documentation: "https://github.com/platanus-hack/platanus-hack-26-co-team-28/tree/main/lora-emergencia/diseno-3d",
         documentationLabel: "Abrir documentación de impresión",
         resources: [
-          { label: "Abrir visor 3D", href: "https://woki-lora-enclosures.vercel.app" },
+          { label: "Modelos listos para imprimir", href: "https://woki-lora-enclosures.vercel.app" },
         ],
+        embed: {
+          title: "Visor interactivo de piezas 3D WOKI",
+          src: "https://woki-lora-enclosures.vercel.app",
+        },
       },
     ],
   };

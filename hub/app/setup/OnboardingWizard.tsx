@@ -291,6 +291,16 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
                   </div>
                 </div>
               </section>
+
+              {step.embed && (
+                <section className={styles.embedSection} aria-labelledby="embed-title">
+                  <div className={styles.embedHead}>
+                    <div><p className="eyebrow">Explora y descarga</p><h3 id="embed-title">Archivos listos para impresión 3D</h3></div>
+                    <a href={step.embed.src} target="_blank" rel="noreferrer">woki-lora-enclosures.vercel.app ↗</a>
+                  </div>
+                  <iframe loading="lazy" src={step.embed.src} title={step.embed.title} />
+                </section>
+              )}
             </>
           )}
         </main>

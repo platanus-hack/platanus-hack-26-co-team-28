@@ -17,6 +17,11 @@ Repositorio oficial:
    documentación del repositorio. No inventes rutas, puertos, credenciales ni capacidades.
 6. No me pidas instalar Arduino IDE: WOKI usa Arduino CLI.
 
+Antes de tocar el hardware, explícame brevemente este recorrido:
+celular → Wi-Fi local → nodo TTGO → LoRa 915 MHz → Gateway → Centro local. Usa
+<https://lora.uprizing.me/> como referencia visual y deja claro que internet solo sincroniza la
+réplica online cuando está disponible.
+
 ## Seguridad obligatoria
 
 - Nunca energices, conectes por USB ni flashees una TTGO LoRa32 sin su antena de 915 MHz.
@@ -92,11 +97,12 @@ Comprueba conmigo este recorrido real, sin simulaciones:
 
 ## Montaje 3D opcional
 
-Después de verificar el flujo, presenta las piezas mecánicas disponibles en
-<https://woki-lora-enclosures.vercel.app>. El Centro incluye marco, pies y bandejas; el nodo de
-campo usa una bandeja impresa dentro de una caja comercial resistente. No afirmes que el montaje
-está certificado: pide validar medidas, tolerancias y temperatura contra el hardware físico antes
-de usarlo en campo.
+Después de verificar el flujo, presenta como extensión física opcional las piezas disponibles en
+<https://woki-lora-enclosures.vercel.app>. El visor ofrece ocho geometrías y archivos STL/3MF
+listos para descargar y laminar. El Centro incluye marco, pies y bandejas; el nodo de campo usa una
+bandeja impresa dentro de una caja comercial resistente. No afirmes que el montaje está
+certificado: pide validar medidas, tolerancias y temperatura contra el hardware físico antes de
+usarlo en campo.
 
 ## Fuentes que debes consultar antes de improvisar
 

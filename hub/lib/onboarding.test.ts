@@ -6,7 +6,7 @@ describe("onboarding del nodo de recurso", () => {
   test("empieza obteniendo el repositorio antes de preparar el hardware", () => {
     const guide = resourceOnboarding();
 
-    expect(guide.steps).toHaveLength(8);
+    expect(guide.steps).toHaveLength(9);
     expect(guide.steps[0].id).toBe("source");
     expect(guide.steps[0].command).toContain("git clone");
     expect(guide.steps[0].documentation).toBe(
@@ -23,6 +23,19 @@ describe("onboarding del nodo de recurso", () => {
         "https://github.com/platanus-hack/platanus-hack-26-co-team-28",
       );
     }
+  });
+
+  test("explica la topología antes de presentar el inventario", () => {
+    const guide = resourceOnboarding();
+    const flow = guide.steps.findIndex((step) => step.id === "network-flow");
+    const inventory = guide.steps.findIndex((step) => step.id === "inventory");
+
+    expect(flow).toBe(1);
+    expect(inventory).toBeGreaterThan(flow);
+    expect(guide.steps[flow].resources).toContainEqual({
+      label: "Ver interacción",
+      href: "https://lora.uprizing.me/",
+    });
   });
 
   test("obliga a conectar la antena antes de preparar Maestro o Esclavo", () => {
@@ -67,9 +80,10 @@ describe("onboarding del nodo de recurso", () => {
     expect(enclosure?.id).toBe("enclosures");
     expect(enclosure?.blocking).toBe(false);
     expect(enclosure?.resources).toContainEqual({
-      label: "Abrir visor 3D",
+      label: "Modelos listos para imprimir",
       href: "https://woki-lora-enclosures.vercel.app",
     });
+    expect(enclosure?.embed?.src).toBe("https://woki-lora-enclosures.vercel.app");
     expect(enclosure?.facts).toContain("Valida medidas y ajustes físicos antes del uso real");
   });
 
