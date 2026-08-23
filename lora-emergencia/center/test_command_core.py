@@ -112,6 +112,19 @@ class CenterStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not available"):
             self.store.reserve_dispatch(request_id, "MEDICO01")
 
+    def test_dispatch_accepts_resource_that_declares_multiple_kinds(self):
+        # La grua del demo es el unico recurso fisico y atiende su propia
+        # categoria (GRUA, "via o vehiculo bloqueado") ademas de RESCATE
+        # (maquinaria pesada). kind="GRUA,RESCATE" debe habilitar el despacho
+        # para AMBAS categorias, no solo para la primera que aparezca.
+        self.store.ingest(RadioFrame.parse("CIVIL2|CENTRO|SOS|8|GRUA|1|4.1|-74.1|-|arbol caido"))
+        self.add_resource("GRUA07", "GRUA,RESCATE")
+        request_id = self.store.state()["requests"][0]["id"]
+
+        dispatch, _ = self.store.reserve_dispatch(request_id, "GRUA07")
+
+        self.assertEqual(dispatch.payload[:2], ("CIVIL2", "8"))
+
     def test_dispatch_rejects_resource_with_stale_communication(self):
         self.add_sos()
         self.add_resource("MEDICO01", "MEDICO")

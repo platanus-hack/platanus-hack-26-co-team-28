@@ -68,12 +68,20 @@ def distance_km(first: Tuple[float, float], second: Tuple[float, float]) -> floa
     return 6371 * 2 * math.atan2(math.sqrt(value), math.sqrt(1 - value))
 
 
+def kind_matches(resource_kind: str, category: str) -> bool:
+    """Un recurso puede declarar varias categorias que atiende, separadas por
+    coma (ej: "GRUA,RESCATE" para una grua que tambien ayuda en rescates con
+    maquinaria pesada). Compatible con el formato de un solo valor, sin coma."""
+    kinds = {part.strip().upper() for part in str(resource_kind or "").split(",") if part.strip()}
+    return category.upper() in kinds
+
+
 def compatible_resources(request: dict, resources: List[dict], now: float) -> List[dict]:
     category = str(request.get("category", request.get("cat", ""))).upper()
     origin = request_location(request)
     candidates = []
     for resource in resources:
-        if str(resource.get("kind", "")).upper() != category or resource.get("state") != "disponible":
+        if not kind_matches(resource.get("kind", ""), category) or resource.get("state") != "disponible":
             continue
         age = max(0, now - float(resource.get("last_seen", 0)))
         if age > RESOURCE_MAX_AGE_SECONDS:

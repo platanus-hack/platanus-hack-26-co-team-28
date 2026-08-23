@@ -9,6 +9,8 @@ import json
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
+from triage import kind_matches
+
 
 VALID_CATEGORIES = {"GRUA", "MEDICO", "RESCATE", "AGUA", "FUEGO"}
 VALID_RESOURCE_STATES = {"disponible", "reservado", "asignado", "enruta", "enlugar", "resuelta", "cancelada"}
@@ -447,7 +449,7 @@ class CenterStore:
             resource = self._db.execute("SELECT * FROM resources WHERE node=?", (resource_node,)).fetchone()
             if not resource:
                 raise ValueError("resource not found")
-            if resource["kind"].upper() != request["category"]:
+            if not kind_matches(resource["kind"], request["category"]):
                 raise ValueError("resource is not compatible with request category")
             if resource["state"] != "disponible":
                 raise ValueError("resource is not available")

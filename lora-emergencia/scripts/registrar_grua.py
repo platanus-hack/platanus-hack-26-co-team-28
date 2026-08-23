@@ -2,12 +2,14 @@
 # ============================================================================
 # registrar_grua.py · Registra la grua del demo como recurso disponible
 # ----------------------------------------------------------------------------
-# En el demo, la grua es la unidad de maquinaria pesada que atiende rescates.
-# Se registra con tipo RESCATE para que el centro permita despacharla a un SOS
-# de "persona atrapada". Corre esto UNA vez despues de arrancar center.py --sim.
+# En el demo la grua es el UNICO recurso fisico, y atiende 2 categorias: GRUA
+# (su categoria propia, "via o vehiculo bloqueado") y RESCATE (maquinaria
+# pesada para "persona atrapada"). El campo kind acepta varios valores
+# separados por coma; triage.kind_matches() compara contra cualquiera de
+# ellos. Corre esto UNA vez despues de arrancar center.py --sim.
 #
 # USO:
-#   python3 scripts/registrar_grua.py                 (GRUA07, tipo RESCATE)
+#   python3 scripts/registrar_grua.py                    (GRUA07, GRUA+RESCATE)
 #   python3 scripts/registrar_grua.py --grua GRUA09 --kind GRUA
 #   python3 scripts/registrar_grua.py --lat 4.677 --lon -74.048
 # ============================================================================
@@ -21,7 +23,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--base", default="http://127.0.0.1:8080")
     p.add_argument("--grua", default="GRUA07")
-    p.add_argument("--kind", default="RESCATE", help="tipo del recurso (RESCATE para atender rescates)")
+    p.add_argument("--kind", default="GRUA,RESCATE", help="categorias que atiende, separadas por coma")
     p.add_argument("--lat", default="4.6770")
     p.add_argument("--lon", default="-74.0485")
     args = p.parse_args()

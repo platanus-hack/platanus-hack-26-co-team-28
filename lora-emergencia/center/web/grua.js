@@ -32,12 +32,14 @@ async function sendFrame(kind, payload) {
 }
 
 // El operador de grúa entra/sale de servicio a propósito (como una unidad que
-// reporta disponibilidad). Entrar manda un HB que registra la grúa como RESCATE
-// disponible; un latido periódico la mantiene reciente para el triage. El estado
-// se recuerda en el navegador, así una recarga NO cae a "fuera de servicio".
+// reporta disponibilidad). Entrar manda un HB que registra la grúa como
+// GRUA,RESCATE disponible (atiende su categoria propia -via/vehiculo
+// bloqueado- y tambien rescates con maquinaria pesada); un latido periódico
+// la mantiene reciente para el triage. El estado se recuerda en el
+// navegador, así una recarga NO cae a "fuera de servicio".
 async function entrarServicio() {
   try {
-    await sendFrame("HB", ["RESCATE", "NORTE", "-", "1"]);
+    await sendFrame("HB", ["GRUA,RESCATE", "NORTE", "-", "1"]);
     enServicio = true;
     try { localStorage.setItem(SERVICIO_KEY, "1"); } catch (e) { /* almacenamiento no disponible */ }
     setStatus("En servicio · esperando asignaciones", "ok");
@@ -46,7 +48,7 @@ async function entrarServicio() {
     btn.className = "btn salir";
     document.querySelector("#error").textContent = "";
     if (hbTimer) clearInterval(hbTimer);
-    hbTimer = setInterval(() => { sendFrame("HB", ["RESCATE", "NORTE", "-", "1"]).catch(() => {}); }, 60000);
+    hbTimer = setInterval(() => { sendFrame("HB", ["GRUA,RESCATE", "NORTE", "-", "1"]).catch(() => {}); }, 60000);
     tick();
   } catch (error) {
     document.querySelector("#error").textContent = error.message;

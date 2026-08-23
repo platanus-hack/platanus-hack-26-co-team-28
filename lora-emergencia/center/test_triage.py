@@ -1,6 +1,6 @@
 import unittest
 
-from triage import triage_request, triage_requests
+from triage import kind_matches, triage_request, triage_requests
 
 
 NOW = 1_000.0
@@ -123,6 +123,37 @@ class ResourceRecommendationTests(unittest.TestCase):
 
         self.assertEqual(result["recommended_resource"]["node"], "FRESH-FAR")
         self.assertIsNone(result["candidates"][1]["distance_km"])
+
+
+class KindMatchesTests(unittest.TestCase):
+    def test_single_value_matches_only_that_category(self):
+        self.assertTrue(kind_matches("GRUA", "GRUA"))
+        self.assertFalse(kind_matches("GRUA", "RESCATE"))
+
+    def test_comma_separated_value_matches_any_listed_category(self):
+        self.assertTrue(kind_matches("GRUA,RESCATE", "GRUA"))
+        self.assertTrue(kind_matches("GRUA,RESCATE", "RESCATE"))
+        self.assertFalse(kind_matches("GRUA,RESCATE", "MEDICO"))
+
+    def test_is_case_insensitive_and_ignores_stray_spaces(self):
+        self.assertTrue(kind_matches("grua, rescate", "RESCATE"))
+        self.assertTrue(kind_matches(" Grua ,Rescate ", "grua"))
+
+    def test_empty_or_missing_kind_matches_nothing(self):
+        self.assertFalse(kind_matches("", "GRUA"))
+        self.assertFalse(kind_matches(None, "GRUA"))
+
+
+class MultiKindResourceRecommendationTests(unittest.TestCase):
+    def test_resource_with_multiple_kinds_is_a_candidate_for_each_of_its_categories(self):
+        grua = resource("GRUA07", kind="GRUA,RESCATE")
+
+        for category in ("GRUA", "RESCATE"):
+            result = triage_request(request(category=category), [grua], NOW)
+            self.assertEqual(result["recommended_resource"]["node"], "GRUA07")
+
+        result = triage_request(request(category="MEDICO"), [grua], NOW)
+        self.assertIsNone(result["recommended_resource"])
 
 
 if __name__ == "__main__":
