@@ -107,9 +107,9 @@ input.text,textarea.text{width:100%;padding:14px;font-size:16px;border:1.5px sol
 
   <!-- HOME -->
   <section class="view on" data-view="home">
-    <div class="alert safe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg><div><div class="t">Sin señal, pero funciona</div><div class="d">Tu pedido sale por radio hasta el puesto de mando.</div></div></div>
+    <div class="alert safe" id="home-alert"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg><div><div class="t">Sin señal, pero funciona</div><div class="d">Tu pedido sale por radio hasta el puesto de mando.</div></div></div>
     <div class="title">¿Necesitas ayuda?</div>
-    <div class="sub">Toca el botón grande. Nada más.</div>
+    <div class="sub" id="home-sub">Toca el botón grande. Nada más.</div>
     <div class="spacer"></div>
     <button class="bigbtn danger" onclick="irAPedir()"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>PEDIR AYUDA<small>Tu ubicación se manda sola</small></button>
     <button class="btn outline" onclick="irASalvo()"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--safe)" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>Estoy bien</button>
@@ -220,9 +220,20 @@ if(navigator.geolocation){
   navigator.geolocation.getCurrentPosition(function(p){
     gpsRoto = false;
     S.lat=p.coords.latitude.toFixed(5); S.lon=p.coords.longitude.toFixed(5); S.acc=Math.round(p.coords.accuracy);
-  }, function(){ gpsRoto = true; }, {enableHighAccuracy:true, timeout:4000, maximumAge:0});
+  }, function(){ gpsRoto = true; acortarHome(); }, {enableHighAccuracy:true, timeout:4000, maximumAge:0});
 } else {
-  gpsRoto = true;
+  gpsRoto = true; acortarHome();
+}
+// Esta pantalla de home se ve 2 veces si el GPS esta roto aqui: una vez en el
+// portal cautivo, y otra vez (la real) al llegar a Chrome. Confirmado esto,
+// quita el texto explicativo que ya no aporta (se repite en Chrome) y deja
+// solo el titulo y los botones: un puente de un toque, no la pantalla final.
+// Si el GPS SI funciona aqui (ej. alguien entra directo por Chrome, sin pasar
+// por el portal cautivo), esta funcion nunca se llama y el home queda completo.
+function acortarHome(){
+  var alerta=document.getElementById('home-alert'), sub=document.getElementById('home-sub');
+  if(alerta) alerta.style.display='none';
+  if(sub) sub.textContent='Este paso es rápido. Sigues en tu navegador.';
 }
 // Punto de entrada de los 2 botones del home. Si ya sabemos que el GPS esta
 // roto aqui, saltamos a Chrome ANTES de que el ciudadano escriba nada: asi
