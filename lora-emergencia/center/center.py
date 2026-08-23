@@ -349,6 +349,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/health":
+            self.send_json(200, {"ok": True})
+            return
         if parsed.path.startswith("/map/tiles/"):
             self.send_tile(parsed.path)
             return
@@ -406,6 +409,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             if parsed.path == "/api/v1/map/download":
+                if API.public_demo:
+                    self.send_json(403, {
+                        "ok": False,
+                        "error": "descarga no disponible en la demo pública",
+                    })
+                    return
                 try:
                     self.read_json()
                 except ApiError as exc:
@@ -522,7 +531,13 @@ def is_loopback_host(host):
         return False
 
 
-def validate_network_config(host, api_token):
+def validate_network_config(host, api_token, demo=False, public_demo=False):
+    if public_demo:
+        if not demo:
+            raise ValueError("--public-demo solo puede usarse junto con --demo")
+        if api_token.strip():
+            raise ValueError("--public-demo no debe combinarse con --api-token")
+        return
     if not is_loopback_host(host) and not api_token.strip():
         raise ValueError("--api-token es obligatorio al usar un host no loopback")
 
@@ -569,17 +584,25 @@ def main():
     parser.add_argument("--sync-token", default=os.environ.get("WOKI_SYNC_TOKEN", ""))
     parser.add_argument("--db", default="center.db")
     parser.add_argument("--demo", action="store_true")
+    parser.add_argument(
+        "--public-demo", action="store_true",
+        help="demo público efímero, sin radio, persistencia ni autenticación",
+    )
     parser.add_argument("--sim", action="store_true",
                         help="demo con hardware: lee el gateway real pero simula el operador de grua")
     parser.add_argument("--center-lat", type=float, help="latitud fija configurada del puesto de mando")
     parser.add_argument("--center-lon", type=float, help="longitud fija configurada del puesto de mando")
     args = parser.parse_args()
     try:
-        validate_network_config(args.host, args.api_token)
+        validate_network_config(args.host, args.api_token, args.demo, args.public_demo)
     except ValueError as exc:
         parser.error(str(exc))
     if bool(args.sync_url) != bool(args.sync_token):
         parser.error("--sync-url y --sync-token deben configurarse juntos")
+    if args.public_demo and (args.serial or args.sim):
+        parser.error("--public-demo no permite puerto serial ni --sim")
+    if args.public_demo and (args.sync_url or args.sync_token):
+        parser.error("--public-demo no permite sincronización externa")
 
     DEMO = args.demo
     API_TOKEN = args.api_token.strip()
@@ -587,6 +610,8 @@ def main():
     if args.demo:
         seed_demo(STORE)
         GATEWAY = DemoGateway()
+        if args.public_demo:
+            print("Modo demo público: datos sintéticos y efímeros; sin radio ni credenciales.")
     elif args.serial:
         GATEWAY = SerialGateway(args.serial, handle_gateway_line)
         GATEWAY.start()
@@ -602,7 +627,7 @@ def main():
         }
     API = CommandApi(
         STORE, GATEWAY, args.demo, notify_change, sim=args.sim,
-        center_position=center_position,
+        center_position=center_position, public_demo=args.public_demo,
     )
     if args.sync_url:
         try:

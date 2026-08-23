@@ -116,6 +116,11 @@ class ApiTests(unittest.TestCase):
             self.api.get("/api/v1/resources/MISSING", {})
         self.assertEqual(context.exception.status, 404)
 
+    def test_overview_exposes_public_demo_mode(self):
+        api = CommandApi(self.store, self.gateway, demo=True, public_demo=True)
+
+        self.assertTrue(api.overview()["public_demo"])
+
     def test_center_position_is_validated_and_persisted(self):
         saved = self.api.post("/api/v1/center-position", {
             "lat": 4.6501, "lon": -74.1012, "accuracy": 35.5,
@@ -449,6 +454,15 @@ class HttpSafetyTests(unittest.TestCase):
         )
         self.assertEqual(status, 400)
 
+    def test_health_endpoint_is_lightweight_and_does_not_require_api_token(self):
+        center.API_TOKEN = "secret-token"
+
+        status, content_type, body = self.request("GET", "/health")
+
+        self.assertEqual(status, 200)
+        self.assertTrue(content_type.startswith("application/json"))
+        self.assertEqual(json.loads(body), {"ok": True})
+
     def test_oversized_json_body_is_rejected_before_reading_it(self):
         status, _content_type, _body = self.request(
             "POST", "/api/v1/broadcasts", b"", {"Content-Type": "application/json", "Content-Length": "16385"}
@@ -536,6 +550,15 @@ class HttpSafetyTests(unittest.TestCase):
         self.assertLess(app.index("const SHORTBREAD_LIGHT_COLORS"), app.index("function shortbreadStyle"))
         theme_update = app.index('shortbreadColors = theme === "dark"')
         self.assertLess(theme_update, app.index("hybridMap.localLayer?.redraw()", theme_update))
+
+    def test_public_demo_is_unmistakably_labeled_in_the_dashboard(self):
+        app = (center.WEB_ROOT / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn("state.overview.public_demo", app)
+        self.assertIn("Demo pública · datos sintéticos", app)
+        self.assertIn("Gateway simulado", app)
+        self.assertIn('state.publicDemo ? "Demo pública"', app)
+        self.assertIn('api-token-button").hidden = state.publicDemo', app)
 
     def test_desktop_sidebar_stays_sticky_while_document_scrolls(self):
         styles = (center.WEB_ROOT / "styles.css").read_text(encoding="utf-8")
@@ -658,6 +681,19 @@ class HttpSafetyTests(unittest.TestCase):
         self.assertEqual(status, 409)
         release.set()
 
+    def test_public_demo_rejects_offline_map_downloads(self):
+        center.API = CommandApi(
+            self.store, self.gateway, demo=True, public_demo=True
+        )
+
+        status, _content_type, body = self.request(
+            "POST", "/api/v1/map/download", json.dumps({}),
+            {"Content-Type": "application/json"},
+        )
+
+        self.assertEqual(status, 403)
+        self.assertIn("demo pública", body.decode())
+
     def test_vector_tile_headers_gzip_cache_etag_and_validation(self):
         map_path = Path(self.map_directory.name) / "bogota.mbtiles"
         create_mbtiles(map_path, bogota_metadata=True)
@@ -774,6 +810,15 @@ class HttpSafetyTests(unittest.TestCase):
             center.validate_network_config("0.0.0.0", "")
         center.validate_network_config("0.0.0.0", "secret")
         center.validate_network_config("127.0.0.1", "")
+
+    def test_public_demo_is_the_only_unauthenticated_non_loopback_mode(self):
+        center.validate_network_config("0.0.0.0", "", demo=True, public_demo=True)
+        with self.assertRaises(ValueError):
+            center.validate_network_config("0.0.0.0", "", public_demo=True)
+        with self.assertRaises(ValueError):
+            center.validate_network_config(
+                "0.0.0.0", "secret", demo=True, public_demo=True
+            )
 
 
 if __name__ == "__main__":

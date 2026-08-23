@@ -52,6 +52,19 @@ python3 scripts/verificar_e2e.py
 
 El Hub online de solo lectura está en <https://woki-hub.vercel.app>.
 
+### Demo pública del centro de mando
+
+El [`render.yaml`](render.yaml) publica una instancia interactiva separada del centro real. Render
+la inicia con datos sintéticos, SQLite en memoria y un gateway simulado:
+
+```bash
+python3 center.py --demo --public-demo --host 0.0.0.0 --port "$PORT"
+```
+
+La demo no acepta radio, sincronización externa, credenciales ni descargas del mapa offline. Sus
+visitantes comparten el estado mientras el proceso está activo y cualquier reinicio lo restaura;
+no debe usarse para una operación real. El Hub de Vercel sigue siendo el producto online principal.
+
 ## Demo con radio real
 
 Requiere dos LilyGO TTGO LoRa32 T3 V1.6.1 de 915 MHz, antenas y un computador o Raspberry Pi:
@@ -66,7 +79,7 @@ El portal HTTPS necesita un `nodo_portal_https/credentials.h` provisionado local
 
 ## Evidencia
 
-- 83 pruebas unitarias del centro.
+- Más de 100 pruebas automatizadas del centro.
 - Verificador del flujo lógico con 20 comprobaciones end-to-end.
 - Validadores separados para el portal cautivo y el loop físico LoRa.
 - [Prototipo público de módulos físicos](https://woki-lora-enclosures.vercel.app).

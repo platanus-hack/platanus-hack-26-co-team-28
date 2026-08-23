@@ -11,6 +11,7 @@ const titles = {
 };
 const state = {
   demo: false,
+  publicDemo: false,
   overview: null,
   loading: false,
   lastUpdate: 0,
@@ -31,6 +32,10 @@ const appShell = document.querySelector("#app-shell");
 const sidebarToggle = document.querySelector("#sidebar-toggle");
 const syncButton = document.querySelector("#sync-button");
 const lastSync = document.querySelector("#last-sync");
+
+function setLiveBadge(label) {
+  document.querySelector("#live-badge").textContent = state.publicDemo ? "Demo pública" : label;
+}
 
 function setSidebarCollapsed(collapsed, persist = true) {
   appShell.classList.toggle("sidebar-collapsed", collapsed);
@@ -209,13 +214,16 @@ async function getOverview() {
   state.overview = overview;
   state.offlineMap = offlineMap;
   state.demo = state.overview.demo;
+  state.publicDemo = Boolean(state.overview.public_demo);
   state.lastUpdate = Date.now();
   updateSyncStatus();
   document.querySelector("#simulator-nav").hidden = !state.demo;
   const connected = state.overview.gateway;
   document.querySelector("#connection-dot").classList.toggle("connected", connected);
-  document.querySelector("#connection-text").textContent = connected ? "Gateway conectado" : "Gateway desconectado";
-  document.querySelector("#live-badge").textContent = connected ? "En vivo" : "Centro local";
+  document.querySelector("#connection-text").textContent = state.publicDemo ? "Gateway simulado" : connected ? "Gateway conectado" : "Gateway desconectado";
+  document.querySelector("#api-token-button").hidden = state.publicDemo;
+  if (state.publicDemo) document.querySelector(".eyebrow").textContent = "Demo pública · datos sintéticos";
+  setLiveBadge(connected ? "En vivo" : "Centro local");
   return state.overview;
 }
 
@@ -546,7 +554,7 @@ function updateOfflineMapControl() {
   const panel = document.querySelector(".map-panel");
   panel?.classList.toggle("map-installed", map.available);
   panel?.classList.toggle("map-setup", !map.available);
-  button.hidden = map.available || map.downloading;
+  button.hidden = state.publicDemo || map.available || map.downloading;
   button.disabled = map.downloading;
   button.textContent = map.error ? "Reintentar descarga del mapa offline" : "Descargar mapa offline de Bogotá";
   if (map.downloading) {
@@ -1032,7 +1040,7 @@ let sseUpdatePending = false;
 function stopPolling() { clearTimeout(pollTimer); pollTimer = null; pollDelay = 3000; }
 function startPolling(delay = pollDelay) {
   if (pollTimer || sseHealthy) return;
-  document.querySelector("#live-badge").textContent = "Polling";
+  setLiveBadge("Polling");
   pollTimer = setTimeout(async function poll() {
     pollTimer = null;
     const ok = await refreshCurrent();
@@ -1049,8 +1057,8 @@ function connectEvents() {
   if (!("EventSource" in window) || state.apiToken) { startPolling(); return; }
   eventSource = new EventSource("/api/v1/events");
   eventSource.addEventListener("update", scheduleSseRefresh);
-  eventSource.addEventListener("open", () => { sseHealthy = true; stopPolling(); document.querySelector("#live-badge").textContent = "En vivo"; });
-  eventSource.addEventListener("ready", () => { sseHealthy = true; stopPolling(); document.querySelector("#live-badge").textContent = "En vivo"; });
+  eventSource.addEventListener("open", () => { sseHealthy = true; stopPolling(); setLiveBadge("En vivo"); });
+  eventSource.addEventListener("ready", () => { sseHealthy = true; stopPolling(); setLiveBadge("En vivo"); });
   eventSource.onerror = () => { sseHealthy = false; startPolling(pollDelay); };
 }
 

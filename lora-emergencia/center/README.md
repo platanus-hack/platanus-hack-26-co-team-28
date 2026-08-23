@@ -113,6 +113,24 @@ python3 center.py --demo
 
 Abre `http://localhost:8080`. El demo carga solicitudes y recursos sintéticos, escala señales críticas sin reducir la prioridad reportada y recomienda el recurso compatible disponible más cercano. Toda asignación sigue requiriendo confirmación humana.
 
+## Publicar una demo interactiva en Render
+
+El Blueprint [`../../render.yaml`](../../render.yaml) crea un Web Service gratuito y ejecuta:
+
+```bash
+python center.py --demo --public-demo --host 0.0.0.0 --port "$PORT"
+```
+
+`--public-demo` es una excepción deliberada a la autenticación de red y solo funciona junto a
+`--demo`. Fuerza datos sintéticos en memoria y gateway simulado; rechaza puerto serial, `--sim`,
+sincronización externa, token API y descarga del mapa offline. `GET /health` proporciona el health
+check liviano usado por Render.
+
+La instancia es interactiva y compartida entre visitantes mientras vive el proceso. Render puede
+reiniciarla o suspenderla y entonces vuelve a sus datos iniciales. No conectes esta demo a hardware,
+Supabase ni datos reales; el Centro local sigue siendo la autoridad operacional y el Hub de Vercel
+sigue siendo la vista online principal.
+
 Por defecto el servidor escucha únicamente en `127.0.0.1`. Para operar en una LAN se exige un token Bearer:
 
 ```bash
