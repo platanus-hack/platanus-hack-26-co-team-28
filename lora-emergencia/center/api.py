@@ -163,6 +163,7 @@ class CommandApi:
             "gateway": bool(self.gateway and self.gateway.connected),
             "center_position": self.store.get_center_position(),
             "demo": self.demo,
+            "sync": self.store.sync_status(),
             "metrics": {
                 "critical": sum(item["triage"]["priority"] == 0 for item in open_requests),
                 "pending": sum(item["state"] in {"PENDIENTE", "EN_REVISION", "ENVIO_INDETERMINADO"} for item in open_requests),

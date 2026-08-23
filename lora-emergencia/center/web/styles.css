@@ -133,6 +133,7 @@ nav a:active, button:active { transform: scale(.97); }
 .theme-toggle-icon { width: 16px; height: 16px; border: 2px solid currentColor; border-radius: 50%; box-shadow: inset -5px -3px 0 -2px var(--surface); }
 :root[data-theme="dark"] .theme-toggle-icon { box-shadow: inset -5px -3px 0 -2px var(--surface), 0 0 0 2px transparent; }
 .last-sync { white-space: nowrap; }
+.last-sync.sync-pending { color: var(--amber); font-weight: 650; }
 main { max-width: 1500px; padding: 24px; margin: 0 auto; }
 .page-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .page-head h2 { font-size: 26px; margin: 0; letter-spacing: -.025em; }

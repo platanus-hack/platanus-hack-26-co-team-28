@@ -1,46 +1,28 @@
-# Red de emergencia sin internet (LoRa 915 MHz)
+# WOKI · Red de emergencia sin internet
 
-Cuando un terremoto tumba la red celular, la gente atrapada no puede pedir ayuda y el puesto de mando no sabe a dónde ir. Nuestro sistema lleva reportes cortos desde una zona sin señal hasta un centro de operaciones usando radios **LoRa 915 MHz**, sin depender de internet ni de celular.
+Cuando un terremoto tumba la red celular, pedir ayuda deja de ser un problema de interfaz: se vuelve un problema de comunicación y coordinación. WOKI crea un camino local entre la persona afectada y el puesto de mando, sin depender de internet.
 
-## Cómo funciona
-
-```
-📱 civil → WiFi "AYUDA" → NODO (portal cautivo) → LoRa 915 → GATEWAY → USB → CENTRO (tablero)
+```text
+Celular → WiFi del nodo → LoRa 915 MHz → Gateway → Centro local
 ```
 
-- El **civil** no instala ninguna app. Se conecta a la red WiFi abierta `AYUDA` que emite el nodo. Se abre un portal cautivo con botones: agua, médico, rescate, a salvo.
-- El **nodo** codifica el reporte en un paquete corto y lo manda por LoRa. Espera un ACK y reintenta si se pierde.
-- El **gateway** recibe el reporte, confirma con un ACK de vuelta, y lo imprime por USB.
-- El **centro** lee el gateway y muestra un tablero en vivo con contadores y color por tipo de emergencia.
+La persona no instala una app. Se conecta al WiFi de un nodo TTGO, reporta qué necesita y aporta GPS o una descripción del lugar. El nodo transmite un paquete corto por LoRa, espera confirmación y reintenta si es necesario.
 
-## Ubicación exacta por GPS
+En la Raspberry Pi, el centro conserva todo en SQLite, prioriza incidentes, recomienda recursos compatibles y permite al operador autorizar el despacho. El recurso acepta la misión y reporta su avance hasta cerrar el incidente. La radio, la base de datos, el mapa y el dashboard funcionan localmente.
 
-La placa no trae GPS. El GPS sale del **navegador del celular** con `navigator.geolocation`. Como el navegador exige un contexto seguro, el nodo sirve una página **HTTPS** con un certificado válido de `ayuda.homiapp.xyz`. Así el celular pide permiso de ubicación y manda la latitud y longitud reales dentro del reporte.
+## Dos modos complementarios
 
-## Estado verificado en hardware
+- **Modo offline:** es el producto operacional y la fuente de verdad durante la emergencia.
+- **Modo online:** es una réplica desplegada en Vercel con Supabase para visibilidad remota, consulta controlada y evaluación del proyecto.
 
-- ✅ Enlace LoRa de una vía entre 2 placas.
-- ✅ Enlace bidireccional con ACK (nodo → LoRa → gateway → ACK → nodo).
-- ✅ Portal cautivo `AYUDA` + reporte por botones.
-- ✅ Upgrade a GPS exacto por HTTPS.
-- ✅ Tablero del centro en vivo.
+Cuando vuelve internet, el centro local sincroniza automáticamente sus eventos pendientes. Si la nube falla, la operación continúa y la cola reintenta. El hub online no ejecuta acciones críticas: muestra información, mientras la autorización permanece en el centro local.
 
-Prueba real entre 2 placas:
+## Estado demostrado
 
-```
-A/NODO   : [NODO] TX (intento 1): a3f21c|atrapado|apto401|1
-B/GATEWAY: RECV|a3f21c|atrapado|apto401|1|RSSI:-27.00|SNR:9.25
-A/NODO   : [NODO] ACK recibido. RSSI:-27.00 SNR:9.25
-```
+- Comunicación LoRa y ACK entre placas TTGO documentada en hardware.
+- Command center local, persistencia SQLite y dashboard offline implementados.
+- Flujo lógico completo verificado automáticamente: SOS, triage, despacho, aceptación, trayecto y resolución.
+- Portal, gateway, nodo recurso y validadores de hardware incluidos.
+- Outbox SQLite, worker HTTPS, ingesta idempotente en Supabase y Hub online desplegados.
 
-## Hardware
-
-- 2× **LilyGO TTGO LoRa32 T3 V1.6.1**, banda **915 MHz** (chip **SX1276**).
-- Antena 915 MHz SMA.
-- Toolchain macOS: `arduino-cli` + RadioLib + core ESP32.
-
-## Track
-
-🚨 Emergencies
-
-El código, el firmware y la documentación completa están en la carpeta [`lora-emergencia/`](./lora-emergencia).
+El Hub está disponible en <https://woki-hub.vercel.app>. La promesa central no cambia: **WOKI funciona cuando internet no funciona**.

@@ -46,4 +46,4 @@ SX1276 radio = new Module(18, 26, 23, 33);   // CS, DIO0, RST, DIO1
 
 ## OLED
 
-Algunas T3 V1.6.1 traen pantalla OLED (I2C, SDA 21 / SCL 22) y otras no. Los firmwares del repo **no usan el OLED**, todo sale por serial. Si tu placa trae OLED, se puede agregar como mejora.
+Algunas T3 V1.6.1 traen pantalla OLED (I2C, SDA 21 / SCL 22) y otras no. Los firmwares vigentes `gateway_bidir`, `nodo_portal_https` y `range_movil` la detectan antes de usarla; la operación principal no depende de que esté presente.

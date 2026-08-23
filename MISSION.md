@@ -2,11 +2,11 @@
 
 ## Objetivo
 
-Comprender y desarrollar el command center de la red de emergencia LoRa para que el equipo pueda operarlo localmente, sin depender de internet.
+Construir el command center de la red de emergencia LoRa para que el equipo pueda operarlo localmente sin depender de internet y recuperar visibilidad remota cuando regresa la conectividad.
 
 ## Resultado práctico
 
-Construir un dashboard desplegable en una Raspberry Pi que reciba reportes de nodos TTGO LoRa32, los conserve localmente y permita priorizar y coordinar la respuesta desde el puesto de mando.
+Construir un dashboard desplegable en una Raspberry Pi que reciba reportes de nodos TTGO LoRa32, los conserve localmente, permita priorizar y coordinar la respuesta, y sincronice después los eventos con un hub online.
 
 ## Contexto del sistema
 
@@ -22,3 +22,4 @@ Construir un dashboard desplegable en una Raspberry Pi que reciba reportes de no
 3. Persistencia local para no perder información al reiniciar.
 4. Interfaz clara para una situación de emergencia.
 5. Arquitectura que permita evolucionar sin reemplazar el firmware de radio innecesariamente.
+6. Sincronización eventual que nunca bloquee ni sustituya la operación local.

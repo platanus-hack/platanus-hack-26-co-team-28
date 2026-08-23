@@ -6,6 +6,7 @@ import sqlite3
 import threading
 import time
 import json
+import uuid
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -156,6 +157,24 @@ class CenterStore:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS sync_outbox (
+                    event_id TEXT PRIMARY KEY,
+                    operation_id TEXT NOT NULL,
+                    origin_id TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    kind TEXT NOT NULL,
+                    occurred_at REAL NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    schema_version INTEGER NOT NULL DEFAULT 1,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    next_attempt_at REAL NOT NULL DEFAULT 0,
+                    last_error TEXT NOT NULL DEFAULT '',
+                    synced_at REAL,
+                    created_at REAL NOT NULL,
+                    UNIQUE(origin_id, sequence)
+                );
+                CREATE INDEX IF NOT EXISTS sync_outbox_pending
+                    ON sync_outbox(synced_at, next_attempt_at, sequence);
                 """
             )
             resource_columns = {row[1] for row in self._db.execute("PRAGMA table_info(resources)")}
@@ -174,19 +193,153 @@ class CenterStore:
             )
             self._db.execute("UPDATE resources SET state='asignado' WHERE state='reservado'")
 
+    def _metadata_value(self, key: str, prefix: str = "") -> str:
+        row = self._db.execute("SELECT value FROM metadata WHERE key=?", (key,)).fetchone()
+        if row:
+            return row[0]
+        value = prefix + str(uuid.uuid4())
+        self._db.execute("INSERT INTO metadata(key,value) VALUES(?,?)", (key, value))
+        return value
+
+    def sync_identity(self) -> dict:
+        """Return stable identifiers stored inside the local SQLite database."""
+        with self._lock, self._db:
+            return {
+                "origin_id": self._metadata_value("sync_origin_id", "center-"),
+                "operation_id": self._metadata_value("sync_operation_id"),
+            }
+
+    def _enqueue_sync_event(
+        self, kind: str, payload: dict, occurred_at: Optional[float] = None,
+    ) -> dict:
+        identity = {
+            "origin_id": self._metadata_value("sync_origin_id", "center-"),
+            "operation_id": self._metadata_value("sync_operation_id"),
+        }
+        row = self._db.execute(
+            "SELECT value FROM metadata WHERE key='sync_sequence'"
+        ).fetchone()
+        sequence = int(row[0]) + 1 if row else 1
+        self._db.execute(
+            "INSERT INTO metadata(key,value) VALUES('sync_sequence',?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (str(sequence),),
+        )
+        now = time.time()
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "operation_id": identity["operation_id"],
+            "origin_id": identity["origin_id"],
+            "sequence": sequence,
+            "kind": clean_field(kind, 64).upper(),
+            "occurred_at": occurred_at if occurred_at is not None else now,
+            "payload": payload,
+            "schema_version": 1,
+        }
+        self._db.execute(
+            "INSERT INTO sync_outbox(event_id,operation_id,origin_id,sequence,kind,occurred_at,"
+            "payload_json,schema_version,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                event["event_id"], event["operation_id"], event["origin_id"],
+                event["sequence"], event["kind"], event["occurred_at"],
+                json.dumps(payload, separators=(",", ":"), sort_keys=True),
+                event["schema_version"], now,
+            ),
+        )
+        return event
+
+    def list_pending_sync_events(self, limit: int = 50, now: Optional[float] = None) -> list[dict]:
+        limit = max(1, min(int(limit), 200))
+        ready_at = time.time() if now is None else now
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM sync_outbox WHERE synced_at IS NULL AND next_attempt_at<=? "
+                "ORDER BY sequence LIMIT ?",
+                (ready_at, limit),
+            ).fetchall()
+        events = []
+        for row in rows:
+            event = dict(row)
+            event["payload"] = json.loads(event.pop("payload_json"))
+            events.append(event)
+        return events
+
+    def mark_sync_events_synced(self, event_ids: list[str], synced_at: Optional[float] = None) -> int:
+        clean_ids = [str(event_id) for event_id in event_ids if event_id]
+        if not clean_ids:
+            return 0
+        placeholders = ",".join("?" for _ in clean_ids)
+        with self._lock, self._db:
+            cursor = self._db.execute(
+                "UPDATE sync_outbox SET synced_at=?,last_error='' "
+                f"WHERE synced_at IS NULL AND event_id IN ({placeholders})",
+                [time.time() if synced_at is None else synced_at, *clean_ids],
+            )
+        return cursor.rowcount
+
+    def mark_sync_event_failed(
+        self, event_id: str, error: str, retry_at: Optional[float] = None,
+    ) -> bool:
+        with self._lock, self._db:
+            cursor = self._db.execute(
+                "UPDATE sync_outbox SET attempt_count=attempt_count+1,next_attempt_at=?,last_error=? "
+                "WHERE event_id=? AND synced_at IS NULL",
+                (
+                    time.time() if retry_at is None else retry_at,
+                    clean_field(error, 240), str(event_id),
+                ),
+            )
+        return cursor.rowcount == 1
+
+    def sync_status(self) -> dict:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT SUM(CASE WHEN synced_at IS NULL THEN 1 ELSE 0 END) AS pending,"
+                "SUM(CASE WHEN synced_at IS NULL AND attempt_count>0 THEN 1 ELSE 0 END) AS retrying,"
+                "MIN(CASE WHEN synced_at IS NULL THEN occurred_at END) AS oldest_pending_at,"
+                "MAX(synced_at) AS last_synced_at "
+                "FROM sync_outbox"
+            ).fetchone()
+        return {
+            "pending": (row["pending"] or 0) if row else 0,
+            "retrying": (row["retrying"] or 0) if row else 0,
+            "oldest_pending_at": row["oldest_pending_at"] if row else None,
+            "last_synced_at": row["last_synced_at"] if row else None,
+        }
+
     def _record_request_event(
         self, request_id: int, event_type: str, actor: str = "", reason: str = "",
         from_state: Optional[str] = None, to_state: Optional[str] = None,
         metadata: Optional[dict] = None,
     ) -> None:
+        created_at = time.time()
         self._db.execute(
             "INSERT INTO request_events(request_id,event_type,actor,reason,from_state,to_state,metadata_json,created_at) "
             "VALUES(?,?,?,?,?,?,?,?)",
             (
                 request_id, clean_field(event_type, 32), clean_field(actor, 64), clean_field(reason, 240),
-                from_state, to_state, json.dumps(metadata or {}, separators=(",", ":")), time.time(),
+                from_state, to_state, json.dumps(metadata or {}, separators=(",", ":")), created_at,
             ),
         )
+        request = self._db.execute(
+            "SELECT node,seq,category,priority,state,resource_node,created_at,updated_at "
+            "FROM requests WHERE id=?",
+            (request_id,),
+        ).fetchone()
+        if request:
+            self._enqueue_sync_event(
+                "REQUEST_" + clean_field(event_type, 32).upper(),
+                {
+                    "request": dict(request),
+                    "transition": {
+                        "from": from_state,
+                        "to": to_state,
+                        "actor": clean_field(actor, 64),
+                    },
+                    "metadata": metadata or {},
+                },
+                created_at,
+            )
 
     def next_message_id(self) -> int:
         with self._lock, self._db:

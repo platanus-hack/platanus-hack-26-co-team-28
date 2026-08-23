@@ -15,8 +15,8 @@
 > correcto. Para el guion del operador de grúa, el rescatista debe pedir **GRUA**. Si
 > pide RESCATE o MEDICO, despacha a un recurso de ese tipo (o ten esos recursos "en
 > servicio" en `/grua`).
-**Mensaje al jurado:** funciona **sin internet** (radio LoRa) **y** coordina como **Uber**
-(la solicitud llega al operador correcto y se acepta como un viaje).
+**Mensaje al jurado:** funciona **sin internet** (radio LoRa) y coordina el ciclo completo.
+La evolución local-first recuperará visibilidad online sin detener ni sustituir el Centro local.
 
 ---
 
@@ -45,8 +45,10 @@ Muestra las 2 placas con OLED `LINK OK`. "Terremoto. La red celular cayó. Esto 
 de radio LoRa: sin internet, sin celular." Pon los teléfonos en **modo avión** a la vista.
 
 **0:30 · El civil pide ayuda (celular real)**
-El celular se conecta al WiFi **`AYUDA_AQUI_RESCATISTA_911`**. El portal **abre solo**. El
-rescatista toca **"Rescate: hay atrapados"** y autoriza el **GPS**. "Una persona atrapada, aquí."
+El celular se conecta al WiFi **`AYUDA_AQUI_RESCATISTA_911`**. El portal **abre solo**. Para
+el flujo con `GRUA07`, el rescatista selecciona **GRUA** y describe el bloqueo. Si se muestra
+RESCATE, debe existir un recurso compatible de tipo RESCATE. Autoriza el GPS o escribe el
+lugar manualmente.
 
 **1:00 · Llega al centro por radio**
 En el dashboard aparece el **pin** con **prioridad 0 (crítico)**. En el feed:
@@ -63,9 +65,13 @@ En la app del operador (`/grua`) aparece la solicitud con su ubicación. El oper
 El operador toca **"Voy en camino"** → **"Rescate resuelto"**. La solicitud pasa a **RESUELTA**
 en el dashboard. El pin se cierra.
 
-**2:30 · Cierre**
-"Todo este ciclo ocurrió sin internet. Un OS de emergencias que reemplaza el caos por
-coordinación." Señala las OLED: siguen en `LINK OK`.
+**2:30 · Recupera visibilidad**
+Restaura internet y abre <https://woki-hub.vercel.app>. Los eventos pendientes aparecen sin
+reingresarlos. "La nube recupera visibilidad; nunca fue necesaria para responder."
+
+**2:50 · Cierre**
+"Todo el rescate ocurrió sin internet. Al volver la red, WOKI sincronizó la evidencia sin
+ceder el control operacional." Señala las OLED: siguen en `LINK OK`.
 
 ---
 
@@ -94,6 +100,7 @@ los datos móviles**. El portal solo abre solo la primera vez que ve la red como
 - [ ] Los recursos que vas a usar aparecen "en servicio" en el dashboard (grúa, médico...).
 - [ ] Celular de prueba: red olvidada, datos móviles **apagados**, **ubicación encendida**.
 - [ ] Placas cargadas o con powerbank. Antenas enroscadas (nunca energizar sin antena).
+- [ ] `WOKI_SYNC_URL` y `WOKI_SYNC_TOKEN` configurados; Hub abierto en una pestaña.
 - [ ] Ensayo completo una vez, cronometrado.
 
 ---

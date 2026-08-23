@@ -1,16 +1,16 @@
 {
   // Your project's name, as it will appear on the voting page.
-  "project-name": "Red de emergencia LoRa",
+  "project-name": "WOKI",
 
   // Short one-line summary of your project (in Spanish).
-  "project-oneliner-spanish": "Pedir ayuda y coordinar rescates sin internet, con radios LoRa 915 MHz.",
+  "project-oneliner-spanish": "Pedir ayuda y coordinar rescates sin internet, con visibilidad remota cuando vuelve la red.",
 
   // Brief description of your project (in Spanish).
-  "project-description-spanish": "Cuando un terremoto tumba la red celular, la gente atrapada no puede pedir ayuda. Nuestro sistema lleva reportes cortos desde una zona sin señal hasta un centro de operaciones por LoRa 915 MHz. El civil se conecta a la red WiFi 'AYUDA' del nodo, abre un portal cautivo sin app, y pide ayuda con botones (agua, médico, rescate). El nodo manda el reporte por LoRa con ACK, el gateway lo recibe y el centro lo muestra en un tablero en vivo. La ubicación GPS exacta sale del navegador del celular por HTTPS. Verificado en hardware con 2 placas LilyGO TTGO LoRa32.",
+  "project-description-spanish": "WOKI mantiene abierta la comunicación cuando cae internet. Un civil se conecta sin app al WiFi de un nodo TTGO, reporta la emergencia y el mensaje viaja por LoRa 915 MHz hasta un command center local en Raspberry Pi. El centro conserva los datos en SQLite, prioriza, recomienda recursos y coordina el ciclo hasta la resolución con autorización humana. Cuando vuelve la conectividad, una cola durable sincroniza automáticamente los eventos con un hub online de solo lectura, sin convertir la nube en una dependencia operacional.",
 
   // Public URL where your project is deployed and running.
   // Must be a valid URL, for example: https://my-project.vercel.app
   // If your project is an app, put the download link here instead
   // (for example, a URL to download an APK).
-  "deploy-url": "<FILL THIS>"
+  "deploy-url": "https://woki-hub.vercel.app"
 }

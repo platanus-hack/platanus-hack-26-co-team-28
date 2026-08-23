@@ -1,5 +1,9 @@
 # PROTOCOL · Mensajes y parámetros LoRa
 
+> **Documento legacy.** Conserva el primer protocolo de cuatro campos para explicar la
+> evolución y reproducir pruebas antiguas. El protocolo vigente del command center está en
+> [`PROTOCOLO-MINIMO.md`](PROTOCOLO-MINIMO.md). No mezcles ambos formatos en un demo.
+
 ## Parámetros de radio (críticos)
 
 Todas las placas deben usar EXACTAMENTE los mismos valores:

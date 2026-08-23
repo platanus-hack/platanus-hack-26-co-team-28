@@ -64,6 +64,18 @@ El servidor expone la API versionada bajo `/api/v1` y mantiene temporalmente los
 
 `center.py` funciona como gateway y bootstrap HTTP; `command_core.py` conserva dominio y SQLite, `api.py` expone contratos versionados y `web/` contiene el dashboard offline. Leaflet 1.9.4 y Leaflet.VectorGrid 1.3.0 se empaquetan con sus licencias. Si existe el recorte Shortbread, el mapa lo usa automáticamente sin requests externos; si falta, mantiene el esquema local y ofrece una descarga explícita. La cartografía OSM raster online solo se activa con autorización por pestaña y divulga al proveedor el área visible. Al desactivarla vuelve al mapa vectorial local o, si no existe, al esquema.
 
+`sync_worker.py` replica en segundo plano los eventos pendientes cuando existe conectividad. La
+ausencia o caída del Hub no bloquea ninguna operación local. Para activarlo después de desplegar
+el endpoint de Vercel:
+
+```bash
+export WOKI_SYNC_URL='https://TU-HUB.vercel.app/api/sync'
+export WOKI_SYNC_TOKEN='secreto-independiente-del-centro'
+python3 center.py /dev/ttyUSB0 --port 8081
+```
+
+No uses un token personal de Supabase como `WOKI_SYNC_TOKEN`.
+
 ## Preparar el mapa offline
 
 La preparación descarga temporalmente cerca de 641 MB desde la URL fija de Geofabrik, valida el MBTiles, recorta Bogotá a z11–14 y elimina la fuente completa al finalizar. Requiere espacio libre adicional y nunca reemplaza un mapa válido hasta terminar correctamente:

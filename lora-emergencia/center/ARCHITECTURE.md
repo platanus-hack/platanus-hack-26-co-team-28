@@ -108,6 +108,27 @@ Los eventos originales no se sobrescriben. Las vistas actuales pueden derivarse 
 - Inicio automático al arrancar la Raspberry Pi.
 - Exportación y respaldo por archivo cuando exista un medio disponible.
 
+## Extensión online local-first
+
+El Centro local sigue siendo la autoridad operacional. La conectividad externa agrega una
+Réplica en el Hub online, pero no cambia el flujo de radio, las reglas ni la persistencia
+necesaria para responder a una emergencia.
+
+```text
+Radio → Centro local → SQLite + salida de sincronización
+                                      │ cuando vuelve internet
+                                      ▼
+                              Supabase → Hub en Vercel
+```
+
+La salida durable, el worker HTTPS, el endpoint de Vercel y el dashboard remoto ya están
+implementados. El worker solo elimina un pendiente después de recibir una confirmación explícita
+por `event_id`; los errores generan backoff y no afectan el flujo operacional.
+
+La primera versión del Hub online es de consulta. Una acción originada remotamente entra
+como Recomendación y necesita Autorización local. La decisión completa está en
+[`../../docs/ONLINE-SYNC.md`](../../docs/ONLINE-SYNC.md).
+
 ## Dos gateways durante el demo
 
 - Gateway A: activo.
@@ -124,3 +145,4 @@ No transmiten simultáneamente uno junto al otro. El segundo permite recuperaci�
 - Área exacta y fuente licenciada de cartografía offline.
 - Política de failover entre gateways.
 - Límites de autonomía de los agentes.
+- Política de retención y minimización de datos en el Hub online.

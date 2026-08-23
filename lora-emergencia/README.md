@@ -4,6 +4,11 @@ Red de nodos de emergencia. Comunicación entre placas **LilyGO TTGO LoRa32** po
 
 Este repo tiene el firmware que ya funciona entre dos placas, los scripts para flashear y leer, y la documentación para seguir avanzando.
 
+> La entrada principal del proyecto y el orden vigente de lectura están en
+> [`../README.md`](../README.md) y [`../docs/README.md`](../docs/README.md). Los sketches
+> `nodo_tx`, `gateway_rx` y el documento `docs/PROTOCOL.md` son referencias legacy; el demo
+> actual usa el protocolo direccionado de `docs/PROTOCOLO-MINIMO.md`.
+
 ---
 
 ## Estado actual (qué ya funciona)
@@ -57,6 +62,10 @@ lora-emergencia/
 │   ├── command_core.py       dominio, protocolo y persistencia SQLite
 │   ├── CENTRO.md             guía operativa Raspberry ↔ gateway ↔ recursos
 │   └── TOOLCHAIN.md          instalación, compilación y diagnóstico
+├── diseno-3d/                módulos físicos, CAD paramétrico y STL/3MF
+│   ├── MODULOS.md            centro maestro, nodo de campo y energía
+│   ├── cad/                   fuente OpenSCAD
+│   └── exports/               archivos listos para laminar
 ├── scripts/
 │   ├── flash.sh              compilar y subir un firmware a una placa
 │   ├── monitor.sh            leer el serial de una placa
@@ -194,10 +203,11 @@ Ver [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 
 ## Próximos pasos (para el equipo)
 
-1. **Portal cautivo en el nodo:** WiFi abierto `AYUDA` + formulario HTML que genera el reporte.
-2. **Lector en la Raspberry Pi:** `scripts/pi_reader.py` ya parsea los `RECV|...`. Falta conectarlo a un mapa.
-3. **Agregación en el borde:** que el nodo junte varios reportes de WiFi y mande un resumen por LoRa (baja la carga ~98%).
-4. **CAD / listen-before-talk:** reduce colisiones cuando varios nodos transmiten.
+1. **Validar el loop físico vigente:** portal HTTPS → LoRa → centro → estados de vuelta al ciudadano.
+2. **Publicar el Hub online:** réplica de consulta en Vercel + Supabase.
+3. **Sincronizar con outbox:** enviar Eventos operacionales sin bloquear SQLite ni el flujo local.
+4. **Hacer reproducible el portal HTTPS:** plantilla segura de credenciales y compilación limpia desde un clon.
+5. **Escalar el borde:** agregación, identidad derivada del dispositivo y pruebas con múltiples nodos separados.
 
 Ver el diseño completo y el roadmap en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 

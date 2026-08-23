@@ -51,12 +51,13 @@ Límites duros del SX1276 (no se pueden superar con este chip):
 - [x] Enlace bidireccional con ACK (nodo_bidir + gateway_bidir)
 - [x] Portal cautivo en el nodo (WiFi `AYUDA` + formulario, `nodo_portal`)
 - [x] Dashboard del centro que lee el gateway (`center/center.py`)
+- [x] CAD antes de transmitir en los firmwares vigentes
+- [x] Mapa operacional con fallback esquemático y paquete vectorial offline opcional
 - [ ] Probar el portal cautivo en teléfonos reales (iOS / Android)
-- [ ] Mapa geográfico (hoy es tablero por nodo, sin GPS)
 - [ ] Agregación en el borde (resumen por nodo)
-- [ ] CAD antes de transmitir
 - [ ] nodeID derivado de la MAC
 - [ ] Múltiples nodos separados por distancia (el valor real)
+- [ ] Sincronización automática con el Hub online
 
 ## Firmware recomendado para el nodo
 

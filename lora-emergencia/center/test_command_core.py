@@ -2,6 +2,7 @@ import tempfile
 import threading
 import time
 import unittest
+import uuid
 from pathlib import Path
 
 from command_core import CenterStore, RadioFrame
@@ -46,6 +47,49 @@ class CenterStoreTests(unittest.TestCase):
         self.assertEqual(self.add_sos(), "CREATED")
         self.assertEqual(self.add_sos(), "DUPLICATE")
         self.assertEqual(len(self.store.state()["requests"]), 1)
+
+    def test_sos_creates_one_privacy_minimized_sync_event(self):
+        self.assertEqual(self.add_sos(), "CREATED")
+        self.assertEqual(self.add_sos(), "DUPLICATE")
+
+        events = self.store.list_pending_sync_events()
+
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        uuid.UUID(event["event_id"])
+        uuid.UUID(event["operation_id"])
+        self.assertTrue(event["origin_id"].startswith("center-"))
+        self.assertEqual(event["sequence"], 1)
+        self.assertEqual(event["kind"], "REQUEST_INGESTED")
+        self.assertNotIn("detail", event["payload"]["request"])
+        self.assertNotIn("lat", event["payload"]["request"])
+        self.assertNotIn("lon", event["payload"]["request"])
+
+    def test_sync_identity_and_sequence_survive_restart(self):
+        self.add_sos()
+        identity = self.store.sync_identity()
+        self.store.close()
+        self.store = CenterStore(self.db_path)
+        request_id = self.store.state()["requests"][0]["id"]
+        self.store.request_action(request_id, "review", "Ana", "Validación")
+
+        events = self.store.list_pending_sync_events()
+
+        self.assertEqual(self.store.sync_identity(), identity)
+        self.assertEqual([event["sequence"] for event in events], [1, 2])
+        self.assertEqual(events[-1]["kind"], "REQUEST_HUMAN_REVIEW")
+
+    def test_sync_events_retry_then_acknowledge(self):
+        self.add_sos()
+        event = self.store.list_pending_sync_events()[0]
+
+        self.assertTrue(self.store.mark_sync_event_failed(event["event_id"], "sin internet", 200))
+        self.assertEqual(self.store.list_pending_sync_events(now=199), [])
+        retried = self.store.list_pending_sync_events(now=200)[0]
+        self.assertEqual(retried["attempt_count"], 1)
+        self.assertEqual(retried["last_error"], "sin internet")
+        self.assertEqual(self.store.mark_sync_events_synced([event["event_id"]], 201), 1)
+        self.assertEqual(self.store.list_pending_sync_events(now=202), [])
 
     def test_radio_event_records_domain_result(self):
         self.assertEqual(self.add_sos(), "CREATED")

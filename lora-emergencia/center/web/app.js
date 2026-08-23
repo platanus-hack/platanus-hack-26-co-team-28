@@ -44,7 +44,24 @@ setSidebarCollapsed(localStorage.getItem("sidebarExpanded") !== "true", false);
 sidebarToggle.addEventListener("click", () => setSidebarCollapsed(!appShell.classList.contains("sidebar-collapsed")));
 
 function updateSyncStatus() {
-  lastSync.textContent = state.lastUpdate ? `Actualizado ${new Date(state.lastUpdate).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}` : "Sin sincronizar";
+  const sync = state.overview?.sync;
+  lastSync.classList.toggle("sync-pending", Boolean(sync?.pending));
+  if (!sync) {
+    lastSync.textContent = "Cola no disponible";
+    return;
+  }
+  if (sync.pending) {
+    lastSync.textContent = `Offline · ${sync.pending} pendiente${sync.pending === 1 ? "" : "s"}`;
+    lastSync.title = sync.retrying ? `${sync.retrying} evento(s) esperando reintento` : "Esperando conectividad";
+    return;
+  }
+  if (sync.last_synced_at) {
+    lastSync.textContent = `Sincronizado ${new Date(sync.last_synced_at * 1000).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}`;
+    lastSync.title = "Todos los eventos tienen confirmación remota";
+    return;
+  }
+  lastSync.textContent = "Sin pendientes";
+  lastSync.title = "La cola de sincronización está vacía";
 }
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({

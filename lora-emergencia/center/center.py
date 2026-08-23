@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import os
 import re
 import socket
 import threading
@@ -17,6 +18,7 @@ from urllib.parse import parse_qs, urlparse
 from api import ApiError, CommandApi
 from command_core import TERMINAL_STATES, CenterStore, RadioFrame
 from offline_map import MapManager, get_tile
+from sync_worker import SyncWorker
 from triage import triage_requests
 
 
@@ -25,6 +27,7 @@ GATEWAY = None
 API = None
 DEMO = False
 API_TOKEN = ""
+SYNC_WORKER = None
 MAP_MANAGER = MapManager()
 EVENT_SIGNAL = threading.Event()
 SSE_SLOTS = threading.BoundedSemaphore(8)
@@ -556,12 +559,14 @@ def status_rebroadcast_loop(interval=15):
 
 
 def main():
-    global STORE, GATEWAY, API, DEMO, API_TOKEN
+    global STORE, GATEWAY, API, DEMO, API_TOKEN, SYNC_WORKER
     parser = argparse.ArgumentParser()
     parser.add_argument("serial", nargs="?", default=None)
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--api-token", default="")
+    parser.add_argument("--sync-url", default=os.environ.get("WOKI_SYNC_URL", ""))
+    parser.add_argument("--sync-token", default=os.environ.get("WOKI_SYNC_TOKEN", ""))
     parser.add_argument("--db", default="center.db")
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--sim", action="store_true",
@@ -573,6 +578,8 @@ def main():
         validate_network_config(args.host, args.api_token)
     except ValueError as exc:
         parser.error(str(exc))
+    if bool(args.sync_url) != bool(args.sync_token):
+        parser.error("--sync-url y --sync-token deben configurarse juntos")
 
     DEMO = args.demo
     API_TOKEN = args.api_token.strip()
@@ -597,6 +604,13 @@ def main():
         STORE, GATEWAY, args.demo, notify_change, sim=args.sim,
         center_position=center_position,
     )
+    if args.sync_url:
+        try:
+            SYNC_WORKER = SyncWorker(STORE, args.sync_url, args.sync_token)
+        except ValueError as exc:
+            parser.error(str(exc))
+        SYNC_WORKER.start()
+        print("Sincronización online habilitada.")
 
     # Hilo que reenvia el estado a los rescatistas por radio (recupera avisos perdidos).
     if args.serial and not args.demo:
@@ -610,6 +624,8 @@ def main():
         print("\nFin.")
     finally:
         server.server_close()
+        if SYNC_WORKER:
+            SYNC_WORKER.stop()
         STORE.close()
 
 
