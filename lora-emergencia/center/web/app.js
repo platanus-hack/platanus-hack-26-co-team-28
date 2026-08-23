@@ -967,7 +967,11 @@ function startPolling(delay = pollDelay) {
   pollTimer = setTimeout(async function poll() {
     pollTimer = null;
     const ok = await refreshCurrent();
-    pollDelay = ok ? 3000 : Math.min(pollDelay * 2, 30000);
+    // refreshCurrent() devuelve undefined cuando OMITE el refresco (pestaña
+    // oculta, panel de detalle abierto, campo en edición). Omitir no es un
+    // fallo: solo un error real (false) espacia los reintentos. Si no, abrir
+    // el detalle 4 veces dejaba el tablero refrescando cada 30 s.
+    pollDelay = ok === false ? Math.min(pollDelay * 2, 30000) : 3000;
     if (!sseHealthy) startPolling(pollDelay);
   }, delay);
 }
