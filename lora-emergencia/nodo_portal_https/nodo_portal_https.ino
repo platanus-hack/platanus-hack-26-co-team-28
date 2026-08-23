@@ -18,7 +18,9 @@
 #define OLED_SDA 21
 #define OLED_SCL 22
 #define OLED_ADDR 0x3C
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
+// Page-buffer (_1_): usa 128 bytes por pagina en vez de 1024 contiguos del full-buffer.
+// Libera un bloque contiguo grande para que el handshake TLS no se quede sin RAM.
+U8G2_SSD1306_128X64_NONAME_1_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
 bool tieneOled = false;
 int enviados = 0;
 
@@ -30,13 +32,15 @@ bool detectarOled() {
 // Muestra 3 lineas en la OLED del rescatista.
 void oledMostrar(const String& l1, const String& l2, const String& l3) {
   if (!tieneOled) return;
-  oled.clearBuffer();
-  oled.setFont(u8g2_font_ncenB10_tr);
-  oled.drawStr(0, 14, l1.c_str());
-  oled.setFont(u8g2_font_6x12_tr);
-  oled.drawStr(0, 34, l2.c_str());
-  oled.drawStr(0, 52, l3.c_str());
-  oled.sendBuffer();
+  // Page-buffer: redibuja todo dentro del bucle firstPage/nextPage.
+  oled.firstPage();
+  do {
+    oled.setFont(u8g2_font_ncenB10_tr);
+    oled.drawStr(0, 14, l1.c_str());
+    oled.setFont(u8g2_font_6x12_tr);
+    oled.drawStr(0, 34, l2.c_str());
+    oled.drawStr(0, 52, l3.c_str());
+  } while (oled.nextPage());
 }
 
 // --- Pines LoRa (T3 V1.6.1) ---
@@ -360,9 +364,9 @@ void setup() {
   WiFi.softAP(AP_SSID, NULL, 1, 0, 8);
   Serial.print("[NODO] SoftAP '"); Serial.print(AP_SSID);
   Serial.print("' en "); Serial.println(WiFi.softAPIP());
-  dnsServer.start(53, "*", apIP);
 
-  // HTTPS :443
+  // HTTPS :443 se arranca PRIMERO (justo tras softAP) para tomar el bloque
+  // contiguo de RAM antes de que el DNS y el HTTP fragmenten el heap.
   httpd_ssl_config_t sconf = HTTPD_SSL_CONFIG_DEFAULT();
   sconf.servercert = (const uint8_t*)CERT_PEM;
   sconf.servercert_len = sizeof(CERT_PEM);
@@ -389,6 +393,9 @@ void setup() {
   } else {
     Serial.print("FALLO "); Serial.println(se);
   }
+
+  // DNS cautivo: se arranca despues del HTTPS (es liviano, no compite por el bloque grande).
+  dnsServer.start(53, "*", apIP);
 
   // HTTP :80 (portal cautivo -> boton a navegador)
   httpd_config_t hconf = HTTPD_DEFAULT_CONFIG();
