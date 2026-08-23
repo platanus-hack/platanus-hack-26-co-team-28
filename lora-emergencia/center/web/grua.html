@@ -70,9 +70,9 @@
     function actions(request) {
       const node = JSON.stringify(request.node);
       const sequence = JSON.stringify(String(request.seq));
-      if (request.estado === "DESPACHADA") return `<button class="btn accept" onclick='update("ACC",${node},${sequence})'>Aceptar el viaje</button>`;
-      if (request.estado === "ACEPTADA") return `<button class="btn route" onclick='update("ST",${node},${sequence},"enruta")'>Voy en camino</button>`;
-      if (request.estado === "EN_CURSO") return `<button class="btn place" onclick='update("ST",${node},${sequence},"enlugar")'>Llegue al lugar</button><button class="btn resolve" onclick='update("ST",${node},${sequence},"resuelta")'>Rescate resuelto</button>`;
+      if (request.estado === "DESPACHADA") return `<button class="btn accept" onclick='update("ACC",${node},${sequence})'>Aceptar asignacion · ACC &rarr; ACEPTADA</button>`;
+      if (request.estado === "ACEPTADA") return `<button class="btn route" onclick='update("ST",${node},${sequence},"enruta")'>En ruta · ST enruta &rarr; EN_CURSO</button>`;
+      if (request.estado === "EN_CURSO") return `<button class="btn place" onclick='update("ST",${node},${sequence},"enlugar")'>En el lugar · ST enlugar</button><button class="btn resolve" onclick='update("ST",${node},${sequence},"resuelta")'>Resuelta · ST resuelta &rarr; RESUELTA</button>`;
       return "";
     }
 
