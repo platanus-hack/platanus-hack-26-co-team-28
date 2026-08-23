@@ -242,15 +242,20 @@ class CommandApi:
     def _notify_citizen(self, request):
         # Cierra el loop bidireccional: transmite al rescatista el estado de SU
         # solicitud por LoRa (best-effort, sin exigir ACK). El rescatista lo
-        # muestra en el OLED y en el portal (/status). Frame: CENTRO|<nodo>|ST|<id>|<estado>.
+        # muestra en el OLED y en el portal (/status).
+        # Frame: CENTRO|<nodo>|ST|<id>|<request_seq>|<estado>.
         if not self.gateway or not request:
             return
         node = request.get("node")
         estado = request.get("state")
-        if not node or node == "CENTRO" or not estado:
+        request_seq = request.get("seq")
+        if not node or node == "CENTRO" or not estado or request_seq is None:
             return
         try:
-            frame = RadioFrame("CENTRO", node, "ST", self.store.next_message_id(), (str(estado),))
+            frame = RadioFrame(
+                "CENTRO", node, "ST", self.store.next_message_id(),
+                (str(request_seq), str(estado)),
+            )
             self.gateway.send_broadcast(frame)
         except Exception:
             pass

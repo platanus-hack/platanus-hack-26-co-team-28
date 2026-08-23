@@ -88,6 +88,13 @@ GRUA07|CENTRO|ACC|21|CIVIL1|7
 GRUA07|CENTRO|ST|22|CIVIL1|7|enruta
 ```
 
+Las notificaciones de estado de vuelta al nodo ciudadano también incluyen la
+secuencia del SOS. El nodo ignora estados de solicitudes anteriores:
+
+```text
+CENTRO|CIVIL1|ST|23|7|EN_CURSO
+```
+
 ## 5. Flujo de despacho
 
 ```text
@@ -105,6 +112,8 @@ GRUA07|CENTRO|ST|22|CIVIL1|7|enruta
 ```
 
 La solicitud solo pasa a `DESPACHADA` cuando llega el ACK técnico del recurso. La aceptación humana es un mensaje `ACC` posterior.
+El nodo originador persiste la siguiente secuencia y serializa la creación de reportes para
+que cada solicitud conserve una identidad distinta incluso después de reinicios.
 
 ## 6. Máquina de estados
 

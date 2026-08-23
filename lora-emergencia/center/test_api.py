@@ -164,7 +164,7 @@ class ApiTests(unittest.TestCase):
         notif = [f for f in self.gateway.frames if f.kind == "ST" and f.destination == "CIVIL1"]
         self.assertTrue(notif, "no se transmitio la notificacion ST al rescatista")
         self.assertEqual(notif[-1].origin, "CENTRO")
-        self.assertEqual(notif[-1].payload[0], "DESPACHADA")
+        self.assertEqual(notif[-1].payload, ("7", "DESPACHADA"))
 
     def test_operator_action_notifies_citizen_over_radio(self):
         # En modo sim, la grua responde ACC por el simulador. El centro debe
@@ -176,7 +176,7 @@ class ApiTests(unittest.TestCase):
         sim_api.simulate("frames", {"frames": ["MEDICO01|CENTRO|ACC|99|CIVIL1|7"]})
         notif = [f for f in self.gateway.frames if f.kind == "ST" and f.destination == "CIVIL1"]
         self.assertTrue(notif, "no se notifico al rescatista tras ACC")
-        self.assertEqual(notif[-1].payload[0], "ACEPTADA")
+        self.assertEqual(notif[-1].payload, ("7", "ACEPTADA"))
 
     def test_human_actions_require_valid_transitions_and_are_audited(self):
         request_id = self.store.list_requests()[0]["id"]

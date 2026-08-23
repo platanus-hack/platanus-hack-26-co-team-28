@@ -117,11 +117,17 @@ GRUA07 | CENTRO | ACC | MSGID | req_origin | req_id
 
 # Cambio de estado
 GRUA07 | CENTRO | ST | MSGID | req_origin | req_id | estado
+
+# Estado confirmado por el centro al nodo que originó el SOS
+CENTRO | req_origin | ST | MSGID | req_id | estado_centro
 ```
 
 - `req_origin` + `req_id`: origen y `MSGID` del `SOS`. Juntos identifican la solicitud
   sin colisionar con la misma secuencia de otro nodo.
 - `estado`: `enruta` | `enlugar` | `resuelta` | `cancelada`.
+- El nodo ciudadano solo aplica `estado_centro` si `req_id` coincide con su SOS activo.
+- El nodo persiste la siguiente secuencia y su SOS activo para no reutilizar IDs ni perder
+  la correlación después de un reinicio.
 
 Ejemplos:
 
@@ -130,6 +136,7 @@ CENTRO|GRUA07|DISP|12|a3f21c|7|4.67670|-74.04830|-|GRUA|1|volcado
 GRUA07|CENTRO|ACC|5|a3f21c|7
 GRUA07|CENTRO|ST|6|a3f21c|7|enruta
 GRUA07|CENTRO|ST|9|a3f21c|7|resuelta
+CENTRO|a3f21c|ST|13|7|RESUELTA
 ```
 
 ---

@@ -10,6 +10,7 @@
 #include <RadioLib.h>
 #include <esp_http_server.h>
 #include <esp_https_server.h>
+#include <Preferences.h>
 #include <Wire.h>
 #include <U8g2lib.h>
 #include "credentials.h"
@@ -57,13 +58,16 @@ const char* AP_SSID = "AYUDA_AQUI_RESCATISTA_911";
 const char* DOMAIN = "ayuda.homiapp.xyz";
 IPAddress apIP(192, 168, 4, 1);
 DNSServer dnsServer;
+Preferences preferences;
 
 // Direccionamiento estandar (frame: ORIGEN|DESTINO|TIPO|MSGID|payload...)
 #define DST_CENTRO "CENTRO"
 String NODE_ID = "a3f21c";
 String NODE_LAT = "4.6767";
 String NODE_LON = "-74.0483";
-int seq = 0;
+uint32_t seq = 0;
+uint32_t activeSosSeq = 0;
+bool hasActiveSos = false;
 
 // ---- Loop bidireccional: recibir el estado que manda el centro ----
 // El radio lo maneja SOLO loop() (un unico dueno) para no chocar con el envio.
@@ -71,10 +75,11 @@ int seq = 0;
 volatile bool rxFlag = false;             // la ISR marca que llego un paquete
 void IRAM_ATTR onRx() { rxFlag = true; }
 SemaphoreHandle_t txMtx = NULL;           // protege la cola de un solo envio
+SemaphoreHandle_t reportMtx = NULL;       // serializa reportes HTTP/HTTPS completos
 volatile bool txPend = false;             // hay un frame por enviar
 volatile bool txDone = false;             // loop ya lo envio
 volatile bool txOk = false;               // resultado del envio
-String txMsg; int txId = 0;
+String txMsg; uint32_t txId = 0;
 char estadoBuf[24] = "-";                 // ultimo estado recibido del centro
 unsigned long estadoAt = 0;               // millis del ultimo estado recibido
 
@@ -114,11 +119,14 @@ String tok(const String& s, int idx) {
   return "";
 }
 
-// Procesa un frame entrante. Nos interesa el estado que manda el centro:
-// CENTRO|<NODE_ID>|ST|<id>|<estado>. Lo guardamos y lo mostramos en el OLED.
+// Procesa el estado de la solicitud activa enviado por el centro:
+// CENTRO|<NODE_ID>|ST|<id>|<request_seq>|<estado>.
 void procesarEntrante(const String& msg) {
   if (tok(msg, 1) == NODE_ID && tok(msg, 2) == "ST") {
-    String est = tok(msg, 4);
+    String requestSeq = tok(msg, 4);
+    if (!hasActiveSos || requestSeq != String(activeSosSeq)) return;
+    String est = tok(msg, 5);
+    if (est.length() == 0) return;
     est.toCharArray(estadoBuf, sizeof(estadoBuf));
     estadoAt = millis();
     Serial.println("[NODO] estado del centro: " + est);
@@ -137,6 +145,12 @@ String sanN(String s, int n) {
 }
 String san(String s) { return sanN(s, 50); }
 
+uint32_t nextSequence() {
+  uint32_t id = seq++;
+  preferences.putUInt("next_seq", seq);
+  return id;
+}
+
 // Prioridad por defecto segun la categoria (0 = vida en riesgo)
 String priDefault(String cat) {
   if (cat == "MEDICO" || cat == "RESCATE" || cat == "FUEGO") return "0";
@@ -148,7 +162,7 @@ String priDefault(String cat) {
 // CAD (listen-before-talk) + hasta 3 reintentos + espera de ACK dirigido. La
 // espera del ACK usa la bandera de RX; si mientras tanto llega un estado del
 // centro, lo procesa igual.
-bool enviarConAck(String msg, int id) {
+bool enviarConAck(String msg, uint32_t id) {
   bool acked = false;
   int intento = 0;
   while (!acked && intento < 3) {
@@ -185,7 +199,7 @@ bool enviarConAck(String msg, int id) {
 
 // Llamado desde el task del servidor HTTPS. Encola el envio y espera a que
 // loop() (dueno del radio) lo ejecute. Asi dos tasks nunca tocan el radio a la vez.
-bool enviarFrame(String msg, int id) {
+bool enviarFrame(String msg, uint32_t id) {
   xSemaphoreTake(txMtx, portMAX_DELAY);
   txMsg = msg; txId = id; txOk = false; txDone = false; txPend = true;
   xSemaphoreGive(txMtx);
@@ -196,25 +210,37 @@ bool enviarFrame(String msg, int id) {
 
 // SOS: pedir ayuda. Frame: ORIGEN|CENTRO|SOS|MSGID|cat|pri|lat|lon|lugar|detalle
 bool enviarSOS(String cat, String pri, String lat, String lon, String lugar, String detalle) {
+  xSemaphoreTake(reportMtx, portMAX_DELAY);
   lugar = sanN(lugar, 40); detalle = sanN(detalle, 100);
   if (pri.length() == 0) pri = priDefault(cat);
   if (lugar.length() == 0) lugar = "-";
   if (detalle.length() == 0) detalle = "-";
-  int id = seq++;
+  uint32_t id = nextSequence();
+  activeSosSeq = id;
+  hasActiveSos = true;
+  preferences.putUInt("active_sos", activeSosSeq);
+  preferences.putBool("has_sos", true);
+  strlcpy(estadoBuf, "-", sizeof(estadoBuf));
+  estadoAt = 0;
   String msg = NODE_ID + "|" DST_CENTRO "|SOS|" + String(id) + "|" +
                cat + "|" + pri + "|" + lat + "|" + lon + "|" + lugar + "|" + detalle;
-  return enviarFrame(msg, id);
+  bool sent = enviarFrame(msg, id);
+  xSemaphoreGive(reportMtx);
+  return sent;
 }
 
 // OK: reportarse a salvo con datos identificables.
 // Frame: ORIGEN|CENTRO|OK|MSGID|nombre|doc|lat|lon|lugar
 bool enviarOK(String nombre, String doc, String lat, String lon, String lugar) {
+  xSemaphoreTake(reportMtx, portMAX_DELAY);
   nombre = san(nombre); doc = san(doc); lugar = san(lugar);
   if (lugar.length() == 0) lugar = "-";
-  int id = seq++;
+  uint32_t id = nextSequence();
   String msg = NODE_ID + "|" DST_CENTRO "|OK|" + String(id) + "|" +
                nombre + "|" + doc + "|" + lat + "|" + lon + "|" + lugar;
-  return enviarFrame(msg, id);
+  bool sent = enviarFrame(msg, id);
+  xSemaphoreGive(reportMtx);
+  return sent;
 }
 
 // ---------- pagina HTTPS ----------
@@ -396,6 +422,10 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   randomSeed(analogRead(0));
+  preferences.begin("lora-portal", false);
+  seq = preferences.getUInt("next_seq", 0);
+  hasActiveSos = preferences.getBool("has_sos", false);
+  activeSosSeq = preferences.getUInt("active_sos", 0);
 
   tieneOled = detectarOled();
   Serial.println(tieneOled ? "[NODO] OLED detectado" : "[NODO] sin OLED");
@@ -407,6 +437,7 @@ void setup() {
   Serial.println(e == RADIOLIB_ERR_NONE ? "OK" : "FALLO");
   // El rescatista tambien ESCUCHA: el centro le manda el estado de su solicitud.
   txMtx = xSemaphoreCreateMutex();
+  reportMtx = xSemaphoreCreateMutex();
   radio.setPacketReceivedAction(onRx);
   radio.startReceive();
 
@@ -486,7 +517,7 @@ void loop() {
   // 1. Si el servidor HTTPS encolo un envio, loop() lo ejecuta (dueno del radio).
   if (txPend) {
     xSemaphoreTake(txMtx, portMAX_DELAY);
-    String msg = txMsg; int id = txId; txPend = false;
+    String msg = txMsg; uint32_t id = txId; txPend = false;
     xSemaphoreGive(txMtx);
     txOk = enviarConAck(msg, id);
     txDone = true;
