@@ -502,25 +502,31 @@ String pageConfirm(String tipo, bool ok) {
   h += "</div><script>";
   // Mismos pasos, mismo mapeo de estados y misma regla del check final que
   // portal_preview.html. Si se tocan alli, hay que tocarlos aqui.
-  h += "var PASOS=[['Recibida','el puesto de mando recibió tu solicitud'],";
-  h += "['En proceso','un operador está gestionando tu caso'],";
-  h += "['Ayuda en camino','una unidad va hacia ti'],";
-  h += "['Resuelto','te atendieron']];";
+  // 5 pasos, uno por hito real. Cada entrada: titulo, texto cuando YA paso, y
+  // texto mientras se espera.
+  h += "var PASOS=[['Recibida','el puesto de mando recibió tu solicitud','esperando confirmación por radio'],";
+  h += "['En proceso','un operador está gestionando tu caso','esperando que un operador lo tome'],";
+  h += "['Unidad asignada','ya hay una unidad a cargo de tu caso','buscando la unidad más cercana'],";
+  h += "['En camino','la unidad va hacia ti','la unidad todavía no sale'],";
+  h += "['Resuelto','te atendieron','la unidad todavía no termina']];";
+  // Cuantos pasos SE CUMPLIERON ya (0 a 5).
   h += "function nivelDe(e){e=(e||'').toUpperCase();";
-  h += "if(e==='RESUELTA')return 4;";
-  h += "if(e.indexOf('CAMINO')>=0||e.indexOf('ASIGNADA')>=0||e==='DESPACHADA'||e==='ACEPTADA'||e==='EN_CURSO'||e==='ENLUGAR')return 3;";
+  h += "if(e==='RESUELTA')return 5;";
+  h += "if(e.indexOf('CAMINO')>=0||e==='EN_CURSO'||e==='ENLUGAR')return 4;";
+  h += "if(e.indexOf('ASIGNADA')>=0||e==='DESPACHADA'||e==='ACEPTADA')return 3;";
   h += "if(e.indexOf('GESTION')>=0||e==='EN_REVISION')return 2;";
   h += "return 1;}";
   h += "function esCancelada(e){return (e||'').toUpperCase().indexOf('CANCEL')>=0;}";
   h += "var CHECK=\"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3'><path d='M20 6 9 17l-5-5'/></svg>\";";
-  // El ultimo paso alcanzado va 'now' salvo cuando el caso ya cerro: ahi va
-  // 'done', con su check. Sin esto, "Resuelto" nunca podria marcarse.
-  h += "function pintar(n){var cerrado=n>=PASOS.length,s='';";
+  // Todos los pasos cumplidos llevan check; el siguiente es el que se espera.
+  // Misma regla que portal_preview.html: si se toca alli, tocar aqui.
+  h += "function pintar(n){var s='';";
   h += "for(var i=0;i<PASOS.length;i++){";
-  h += "var cls=(i<n-1||(cerrado&&i===n-1))?'done':(i===n-1?'now':'pending');";
+  h += "var cls=i<n?'done':(i===n?'now':'pending');";
   h += "var linea=i<PASOS.length-1?\"<div class='line'></div>\":'';";
+  h += "var d=cls==='pending'?'Aún no':(cls==='now'?PASOS[i][2]:PASOS[i][1]);";
   h += "s+=\"<div class='tl-step \"+cls+\"'><div class='rail'><div class='node'>\"+(cls==='done'?CHECK:'')+'</div>'+linea+";
-  h += "\"</div><div><div class='t'>\"+PASOS[i][0]+\"</div><div class='d'>\"+(cls==='pending'?'Aún no':PASOS[i][1])+'</div></div></div>';}";
+  h += "\"</div><div><div class='t'>\"+PASOS[i][0]+\"</div><div class='d'>\"+d+'</div></div></div>';}";
   h += "document.getElementById('tl').innerHTML=s;}";
   // Cancelar no es "mas avance": reemplaza el timeline por un paso propio.
   h += "function pintarCancel(){document.getElementById('tl').innerHTML=";

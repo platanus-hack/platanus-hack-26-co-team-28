@@ -442,18 +442,28 @@ async function enviar(){
 // El portal consulta /status en el rescatista. El centro le manda el estado por
 // LoRa cuando el operador prioriza, la grua acepta, va en ruta o resuelve.
 var seguimiento=null, horaEnvio='';
+// 5 pasos, uno por hito real del centro. Antes eran 4 y "Ayuda en camino"
+// juntaba 3 estados distintos (despachada, aceptada y en ruta), asi que la
+// pantalla no se movia cuando la unidad salia.
+// `d` es el texto cuando el paso YA pasó; `e` el texto mientras se espera.
 var PASOS=[
-  {t:'Recibida', d:'el puesto de mando recibió tu solicitud'},
-  {t:'En proceso', d:'un operador está gestionando tu caso'},
-  {t:'Ayuda en camino', d:'una unidad va hacia ti'},
-  {t:'Resuelto', d:'te atendieron'}
+  {t:'Recibida',        d:'el puesto de mando recibió tu solicitud', e:'esperando confirmación por radio'},
+  {t:'En proceso',      d:'un operador está gestionando tu caso',    e:'esperando que un operador lo tome'},
+  {t:'Unidad asignada', d:'ya hay una unidad a cargo de tu caso',    e:'buscando la unidad más cercana'},
+  {t:'En camino',       d:'la unidad va hacia ti',                   e:'la unidad todavía no sale'},
+  {t:'Resuelto',        d:'te atendieron',                           e:'la unidad todavía no termina'}
 ];
 // Mapea el estado que manda el centro (etiqueta amigable, o el codigo interno de
 // respaldo) al paso del timeline que ve el ciudadano.
+// Devuelve cuantos pasos SE CUMPLIERON ya (0 a 5).
+// El orden importa: "EN CAMINO" no contiene "ASIGNADA" ni al reves, pero la
+// cadena vieja "GRUA EN CAMINO" (que mandaban ACEPTADA y EN_CURSO por igual)
+// sigue cayendo en "en camino", por si una placa guarda todavia ese texto.
 function nivelDeEstado(est){
   est=(est||'').toUpperCase();
-  if(est==='RESUELTA') return 4;
-  if(est.indexOf('CAMINO')>=0||est.indexOf('ASIGNADA')>=0||est==='DESPACHADA'||est==='ACEPTADA'||est==='EN_CURSO'||est==='ENLUGAR') return 3;
+  if(est==='RESUELTA') return 5;
+  if(est.indexOf('CAMINO')>=0||est==='EN_CURSO'||est==='ENLUGAR') return 4;
+  if(est.indexOf('ASIGNADA')>=0||est==='DESPACHADA'||est==='ACEPTADA') return 3;
   if(est.indexOf('GESTION')>=0||est==='EN_REVISION') return 2;
   return 1; // RECIBIDA / PENDIENTE / sin dato
 }
@@ -470,15 +480,15 @@ function renderTimeline(nivel){
   var tl=document.getElementById('tl'); if(!tl) return;
   var html='';
   for(var i=0;i<PASOS.length;i++){
-    // El ultimo paso ALCANZADO va como 'now' (en curso) salvo cuando el caso
-    // ya cerro: ahi va 'done', con su check verde. Sin esta excepcion el paso
-    // final "Resuelto" caia siempre en 'now' y nunca podia marcarse, aunque el
-    // centro ya hubiera dado el caso por atendido.
-    var cerrado = nivel >= PASOS.length;
-    var cls = (i < nivel-1 || (cerrado && i === nivel-1)) ? 'done' : (i===nivel-1 ? 'now' : 'pending');
+    // `nivel` es cuantos pasos SE CUMPLIERON. Todos esos llevan su check; el
+    // siguiente es el que se espera, y el resto queda gris.
+    // Asi, al marcar "en ruta", "En camino" queda con check y "Resuelto" pasa
+    // a ser lo que falta. Antes el ultimo paso alcanzado se quedaba siempre
+    // en naranja, sin marcarse nunca, salvo un caso especial para el final.
+    var cls = i<nivel ? 'done' : (i===nivel ? 'now' : 'pending');
     var check = cls==='done' ? "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3'><path d='M20 6 9 17l-5-5'/></svg>" : '';
     var line = i<PASOS.length-1 ? "<div class='line'></div>" : '';
-    var d = (cls==='pending') ? 'Aún no' : (i===0 ? (horaEnvio+' · '+PASOS[0].d) : PASOS[i].d);
+    var d = cls==='pending' ? 'Aún no' : (cls==='now' ? PASOS[i].e : (i===0 ? (horaEnvio+' · '+PASOS[0].d) : PASOS[i].d));
     html += "<div class='tl-step "+cls+"'><div class='rail'><div class='node'>"+check+"</div>"+line+"</div><div><div class='t'>"+esc(PASOS[i].t)+"</div><div class='d'>"+esc(d)+"</div></div></div>";
   }
   tl.innerHTML=html;

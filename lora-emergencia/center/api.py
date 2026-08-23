@@ -16,12 +16,20 @@ RESOURCE_STATES = {"disponible", "reservado", "asignado", "enruta", "enlugar", "
 # Estado que ve el CIUDADANO en su telefono/OLED, traducido del estado interno.
 # El firmware es agnostico al texto (muestra lo que llega); el portal lo mapea a
 # un paso del timeline. Fuente unica de verdad de los textos del ciudadano.
+#
+# ACEPTADA y EN_CURSO mandaban la MISMA cadena, "GRUA EN CAMINO". Por eso, al
+# pulsar "En ruta", el telefono no cambiaba nada: ya tenia ese texto desde que
+# la unidad acepto. La senal se perdia aqui, antes de salir por la radio.
+# Ahora cada estado manda una cadena distinta.
+#
+# Tampoco decimos "GRUA" para todo: a una solicitud medica la atiende una
+# ambulancia, y llamarla grua es falso. El texto es neutro: "UNIDAD".
 CITIZEN_STATUS = {
     "PENDIENTE": "RECIBIDA",
     "EN_REVISION": "EN GESTION",
-    "DESPACHADA": "GRUA ASIGNADA",
-    "ACEPTADA": "GRUA EN CAMINO",
-    "EN_CURSO": "GRUA EN CAMINO",
+    "DESPACHADA": "UNIDAD ASIGNADA",
+    "ACEPTADA": "UNIDAD ASIGNADA",
+    "EN_CURSO": "EN CAMINO",
     "RESUELTA": "RESUELTA",
     "CANCELADA": "CANCELADA",
 }

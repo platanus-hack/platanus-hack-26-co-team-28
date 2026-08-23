@@ -198,7 +198,7 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(notif, "no se transmitio la notificacion ST al rescatista")
         self.assertEqual(notif[-1].origin, "CENTRO")
         # El estado viaja traducido a la etiqueta que ve el ciudadano.
-        self.assertEqual(notif[-1].payload, ("7", "GRUA ASIGNADA"))
+        self.assertEqual(notif[-1].payload, ("7", "UNIDAD ASIGNADA"))
 
     def test_operator_action_notifies_citizen_over_radio(self):
         # En modo sim, la grua responde ACC por el simulador. El centro debe
@@ -210,7 +210,22 @@ class ApiTests(unittest.TestCase):
         sim_api.simulate("frames", {"frames": ["MEDICO01|CENTRO|ACC|99|CIVIL1|7"]})
         notif = [f for f in self.gateway.frames if f.kind == "ST" and f.destination == "CIVIL1"]
         self.assertTrue(notif, "no se notifico al rescatista tras ACC")
-        self.assertEqual(notif[-1].payload, ("7", "GRUA EN CAMINO"))
+        self.assertEqual(notif[-1].payload, ("7", "UNIDAD ASIGNADA"))
+
+    def test_en_ruta_se_distingue_de_aceptada(self):
+        # El fallo que motivo esto: ACEPTADA y EN_CURSO mandaban la MISMA
+        # cadena, asi que al pulsar "En ruta" el telefono no cambiaba nada.
+        # Cada estado tiene que viajar con su propio texto.
+        sim_api = CommandApi(self.store, self.gateway, sim=True)
+        request_id = self.store.list_requests()[0]["id"]
+        self.api.dispatch(request_id, {"resource_node": "MEDICO01", "actor": "Ana", "reason": "ok"})
+        sim_api.simulate("frames", {"frames": ["MEDICO01|CENTRO|ACC|99|CIVIL1|7"]})
+        self.gateway.frames.clear()
+        sim_api.simulate("frames", {"frames": ["MEDICO01|CENTRO|ST|100|CIVIL1|7|enruta"]})
+        notif = [f for f in self.gateway.frames if f.kind == "ST" and f.destination == "CIVIL1"]
+        self.assertTrue(notif, "no se notifico al rescatista tras ST enruta")
+        self.assertEqual(notif[-1].payload, ("7", "EN CAMINO"))
+        self.assertEqual(self.store.get_request(request_id)["state"], "EN_CURSO")
 
     def test_pending_request_notifies_recibida(self):
         # El estado PENDIENTE se traduce a "RECIBIDA": el aviso automatico que ve
