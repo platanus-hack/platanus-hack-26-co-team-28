@@ -23,6 +23,8 @@ center/maps/*.mbtiles
 center/maps/*.mbtiles.part
 center/maps/*.mbtiles.tmp
 center/maps/colombia-shortbread-1.0.mbtiles*
+# Indice de lugares que se construye desde el mapa: 11 MB, se regenera solo.
+center/maps/geocodificador.sqlite
 venv/
 .venv/
 nodo_portal_https/credentials.h
