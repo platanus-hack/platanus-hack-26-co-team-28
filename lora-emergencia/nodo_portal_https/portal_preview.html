@@ -14,13 +14,18 @@
   --danger:#FF4438; --warn:#FF8A00; --caution:#FFC400; --safe:#2FBF71; --notice:#4C9AFF;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
-.app{max-width:440px;margin:0 auto;min-height:100vh;padding:14px 16px 24px;display:flex;flex-direction:column}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+/* min-height 100vh como base; 100dvh donde exista (evita el salto de la barra de
+   direcciones en iOS/Android). Padding con safe-area para el notch. */
+.app{max-width:440px;margin:0 auto;min-height:100vh;min-height:100dvh;
+  padding:calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+  display:flex;flex-direction:column}
 .bar{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);padding:2px 2px 12px}
 .bar .nosig{color:var(--caution);font-weight:700}
 .view{display:none;flex-direction:column;flex:1}
 .view.on{display:flex}
-.title{font-size:25px;font-weight:800;letter-spacing:-.02em;margin:2px 0 4px}
+.title{font-size:clamp(22px,6.2vw,26px);font-weight:800;letter-spacing:-.02em;margin:2px 0 4px}
 .sub{color:var(--muted);font-size:14px;margin-bottom:16px}
 .spacer{flex:1}
 .alert{display:flex;gap:11px;padding:12px;border-radius:12px;border:1px solid;border-left-width:5px;margin-bottom:15px}
@@ -29,7 +34,7 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 .alert.safe{background:color-mix(in srgb,var(--safe) 12%,var(--surface));border-color:var(--safe)}.alert.safe svg,.alert.safe .t{color:var(--safe)}
 .alert.notice{background:color-mix(in srgb,var(--notice) 12%,var(--surface));border-color:var(--notice)}.alert.notice svg,.alert.notice .t{color:var(--notice)}
 .alert.caution{background:color-mix(in srgb,var(--caution) 12%,var(--surface));border-color:var(--caution)}.alert.caution svg,.alert.caution .t{color:var(--caution)}
-.bigbtn{border:none;width:100%;min-height:110px;padding:22px;border-radius:22px;cursor:pointer;color:#fff;font-weight:800;font-size:27px;letter-spacing:-.01em;display:flex;flex-direction:column;align-items:center;gap:6px}
+.bigbtn{border:none;width:100%;min-height:110px;padding:22px;border-radius:22px;cursor:pointer;color:#fff;font-weight:800;font-size:clamp(23px,7vw,28px);letter-spacing:-.01em;display:flex;flex-direction:column;align-items:center;gap:6px}
 .bigbtn small{font-weight:500;font-size:14px;opacity:.95}
 .bigbtn.danger{background:var(--danger);box-shadow:0 14px 34px -12px color-mix(in srgb,var(--danger) 75%,transparent)}
 .btn{border:none;width:100%;min-height:62px;padding:16px;border-radius:15px;cursor:pointer;font-weight:700;font-size:17px;display:flex;align-items:center;justify-content:center;gap:9px;margin-top:10px}
@@ -46,12 +51,11 @@ body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-ap
 .cat svg{width:30px;height:30px}
 .cat .firstaid{width:32px;height:32px;border-radius:7px;background:var(--safe);display:grid;place-items:center}
 .cat .firstaid svg{width:20px;height:20px;color:#fff}
-.cat span{font-size:15px;font-weight:700}
-.seg{display:flex;gap:7px}
-.seg button{flex:1;border:1.5px solid var(--border);background:var(--surface);color:var(--muted);border-radius:12px;padding:13px 4px;font-size:12.5px;font-weight:700;cursor:pointer;min-height:52px;text-transform:uppercase;letter-spacing:.02em}
-.seg button.sel[data-sev="minor"]{background:var(--notice);border-color:var(--notice);color:#04162e}
-.seg button.sel[data-sev="moderate"]{background:var(--warn);border-color:var(--warn);color:#180d00}
-.seg button.sel[data-sev="extreme"]{background:var(--danger);border-color:var(--danger);color:#fff}
+.cat span{font-size:14.5px;font-weight:700;line-height:1.2;overflow-wrap:anywhere}
+/* Subcategorias opcionales (chips). La severidad NO se elige aqui: la da el centro. */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1.5px solid var(--border);background:var(--surface);color:var(--muted);border-radius:11px;padding:11px 13px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px}
+.chip.sel{background:color-mix(in srgb,var(--notice) 16%,var(--surface));border-color:var(--notice);color:var(--text)}
 /* "Estas aqui": el feedback de ubicacion */
 .here{display:flex;align-items:center;gap:11px;border:1.5px solid var(--border);background:var(--surface);border-radius:13px;padding:13px 14px;min-height:58px}
 .here svg{width:20px;height:20px;flex:none}
@@ -82,6 +86,18 @@ input.text{width:100%;padding:14px;font-size:16px;border:1.5px solid var(--borde
 .tl-step .t{font-weight:700;font-size:14.5px}
 .tl-step.pending .t{color:var(--muted);opacity:.7}
 .tl-step .d{font-size:12.5px;color:var(--muted);margin-top:1px}
+/* Pantallas angostas (iPhone SE, Androids de 360px o menos): reduce paddings y
+   alturas para que nada se desborde ni se corte. */
+@media (max-width:360px){
+  .app{padding-left:calc(12px + env(safe-area-inset-left));padding-right:calc(12px + env(safe-area-inset-right))}
+  .cat-grid{gap:8px}
+  .cat{padding:12px 7px;min-height:96px}
+  .cat span{font-size:13.5px}
+  .bigbtn{min-height:96px;padding:18px}
+  .chip{padding:10px 11px;font-size:13px}
+}
+/* Pantallas muy bajas en horizontal: no forzar la altura completa. */
+@media (max-height:520px){ .app{min-height:0} }
 </style>
 </head>
 <body>
@@ -100,20 +116,20 @@ input.text{width:100%;padding:14px;font-size:16px;border:1.5px solid var(--borde
 
   <!-- PEDIR -->
   <section class="view" data-view="pedir">
-    <div class="title" style="margin-top:4px">¿Qué necesitas?</div>
+    <div class="title" style="margin-top:4px">¿Qué está pasando?</div>
     <div class="sub">Elige una. La ubicación se toma sola.</div>
     <div class="cat-grid" id="cats">
-      <div class="cat" data-cat="RESCATE"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="7" r="3"/><path d="M5.5 21c0-4 2.9-6.5 6.5-6.5s6.5 2.5 6.5 6.5"/></svg><span>Rescate</span></div>
-      <div class="cat" data-cat="MEDICO"><span class="firstaid"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/></svg></span><span>Médico</span></div>
-      <div class="cat" data-cat="GRUA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17h13v-4l4 1v3h1M5 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM16 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM3 13V8h7l3 3"/></svg><span>Grúa</span></div>
-      <div class="cat" data-cat="AGUA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2s6.5 7 6.5 11.5a6.5 6.5 0 0 1-13 0C5.5 9 12 2 12 2z"/></svg><span>Agua</span></div>
-      <div class="cat" data-cat="FUEGO"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2c1 3-2 4-2 7a2 2 0 0 0 4 0c2 2 3 3.5 3 6a5 5 0 0 1-10 0c0-3 3-4 5-13z"/></svg><span>Fuego</span></div>
+      <div class="cat" data-cat="RESCATE"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="7" r="3"/><path d="M5.5 21c0-4 2.9-6.5 6.5-6.5s6.5 2.5 6.5 6.5"/></svg><span>Persona atrapada</span></div>
+      <div class="cat" data-cat="MEDICO"><span class="firstaid"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/></svg></span><span>Persona herida</span></div>
+      <div class="cat" data-cat="FUEGO"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 2c1 3-2 4-2 7a2 2 0 0 0 4 0c2 2 3 3.5 3 6a5 5 0 0 1-10 0c0-3 3-4 5-13z"/></svg><span>Incendio</span></div>
+      <div class="cat" data-cat="AGUA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2s6.5 7 6.5 11.5a6.5 6.5 0 0 1-13 0C5.5 9 12 2 12 2z"/></svg><span>Inundación</span></div>
+      <div class="cat" data-cat="GRUA"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17h13v-4l4 1v3h1M5 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM16 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM3 13V8h7l3 3"/></svg><span>Vía o vehículo bloqueado</span></div>
     </div>
-    <div class="label">¿Qué tan urgente?</div>
-    <div class="seg" id="sevs">
-      <button data-sev="minor">Menor</button>
-      <button data-sev="moderate" class="sel">Moderado</button>
-      <button data-sev="extreme">Extremo</button>
+    <!-- Subcategoria opcional: aparece al elegir situacion. Ayuda al triage del
+         centro. La SEVERIDAD la asigna el centro, no el ciudadano. -->
+    <div id="subwrap" style="display:none">
+      <div class="label">Detalle (opcional)</div>
+      <div class="chips" id="subs"></div>
     </div>
     <div class="label">Tu ubicación</div>
     <div class="here wait" id="here">
@@ -174,11 +190,19 @@ input.text{width:100%;padding:14px;font-size:16px;border:1.5px solid var(--borde
 </div>
 
 <script>
-// Estado de la seleccion. cat/pri mapean al protocolo del OS de emergencias.
-var S = {cat:null, sev:'moderate', lat:'', lon:'', acc:null};
-var SEV2PRI = {extreme:'0', moderate:'2', minor:'3'};
-var CATNOMBRE = {RESCATE:'Rescate', MEDICO:'Médico', GRUA:'Grúa', AGUA:'Agua', FUEGO:'Fuego'};
-var SEVNOMBRE = {extreme:'Extremo', moderate:'Moderado', minor:'Menor'};
+// Estado de la seleccion. La categoria es la SITUACION que ve el ciudadano.
+// La severidad la asigna el centro (triage.py), no el ciudadano.
+var S = {cat:null, sub:'', lat:'', lon:'', acc:null};
+// Etiqueta que ve el ciudadano (situacion) por codigo de protocolo.
+var CATNOMBRE = {RESCATE:'Persona atrapada', MEDICO:'Persona herida', FUEGO:'Incendio', AGUA:'Inundación', GRUA:'Vía o vehículo bloqueado'};
+// Subcategorias opcionales por situacion. Alimentan el triage del centro.
+var SUBCATS = {
+  RESCATE:['bajo escombros','consciente','varias personas'],
+  MEDICO:['inconsciente','hemorragia','fractura'],
+  FUEGO:['gente dentro','olor a gas'],
+  AGUA:['atrapado por el agua','falta agua potable'],
+  GRUA:['carro volcado','escombro en vía','árbol caído']
+};
 
 function go(v){
   document.querySelectorAll('.view').forEach(function(e){e.classList.toggle('on', e.dataset.view===v)});
@@ -223,14 +247,23 @@ function mostrarEscape(){
 
 document.getElementById('cats').addEventListener('click', function(e){
   var c=e.target.closest('.cat'); if(!c) return;
-  S.cat=c.dataset.cat;
+  S.cat=c.dataset.cat; S.sub='';
   document.querySelectorAll('#cats .cat').forEach(function(x){x.classList.toggle('sel', x===c)});
+  mostrarSubs(S.cat);
   revisarListo();
 });
-document.getElementById('sevs').addEventListener('click', function(e){
-  var b=e.target.closest('button'); if(!b) return;
-  S.sev=b.dataset.sev;
-  document.querySelectorAll('#sevs button').forEach(function(x){x.classList.toggle('sel', x===b)});
+// Pinta las subcategorias de la situacion elegida. Tocar una la marca/desmarca.
+function mostrarSubs(cat){
+  var wrap=document.getElementById('subwrap'), box=document.getElementById('subs');
+  var list=SUBCATS[cat]||[];
+  box.innerHTML=list.map(function(s){return '<button type="button" class="chip" data-sub="'+esc(s)+'">'+esc(s)+'</button>'}).join('');
+  wrap.style.display = list.length ? 'block' : 'none';
+}
+document.getElementById('subs').addEventListener('click', function(e){
+  var b=e.target.closest('.chip'); if(!b) return;
+  var v=b.dataset.sub, was=b.classList.contains('sel');
+  document.querySelectorAll('#subs .chip').forEach(function(x){x.classList.remove('sel')});
+  if(!was){ b.classList.add('sel'); S.sub=v; } else { S.sub=''; }
 });
 document.getElementById('lugar').addEventListener('input', revisarListo);
 
@@ -242,15 +275,17 @@ function revisarListo(){
 
 async function enviar(){
   var lugar=document.getElementById('lugar').value.trim();
-  var pri=SEV2PRI[S.sev];
-  // Frame del protocolo: SOS con cat|pri|lat|lon|lugar. El ciudadano no lo ve.
-  var body='accion=sos&cat='+S.cat+'&pri='+pri+'&lat='+S.lat+'&lon='+S.lon+'&lugar='+encodeURIComponent(lugar)+'&detalle=';
+  // Frame del protocolo: SOS con cat|pri|lat|lon|lugar|detalle. El ciudadano NO
+  // manda severidad (pri vacio): el centro la asigna con triage. detalle lleva la
+  // subcategoria opcional para ayudar a ese triage.
+  var body='accion=sos&cat='+S.cat+'&pri=&lat='+S.lat+'&lon='+S.lon+
+           '&lugar='+encodeURIComponent(lugar)+'&detalle='+encodeURIComponent(S.sub);
   await postReporte(body);
-  // Recap con feedback claro de la ubicacion enviada.
+  // Recap con feedback claro de lo enviado.
   var ubic = (S.lat && S.lon) ? (S.lat+', '+S.lon+' (GPS ±'+S.acc+' m)') : lugar;
   document.getElementById('recap').innerHTML =
-    fila('Necesitas', CATNOMBRE[S.cat]) +
-    fila('Urgencia', SEVNOMBRE[S.sev]) +
+    fila('Situación', CATNOMBRE[S.cat]) +
+    (S.sub ? fila('Detalle', S.sub) : '') +
     filaMono('Ubicación', ubic);
   document.getElementById('tl-time').textContent = hora()+' · recibido en el puesto de mando';
   go('enviado');
