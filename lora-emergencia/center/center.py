@@ -443,6 +443,8 @@ def main():
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--sim", action="store_true",
                         help="demo con hardware: lee el gateway real pero simula el operador de grua")
+    parser.add_argument("--center-lat", type=float, help="latitud fija configurada del puesto de mando")
+    parser.add_argument("--center-lon", type=float, help="longitud fija configurada del puesto de mando")
     args = parser.parse_args()
     try:
         validate_network_config(args.host, args.api_token)
@@ -460,7 +462,18 @@ def main():
         GATEWAY.start()
     else:
         print("Aviso: sin puerto serial. El tablero opera sin radio.")
-    API = CommandApi(STORE, GATEWAY, args.demo, notify_change, sim=args.sim)
+    if (args.center_lat is None) != (args.center_lon is None):
+        parser.error("--center-lat y --center-lon deben usarse juntos")
+    center_position = None
+    if args.center_lat is not None:
+        center_position = {
+            "lat": args.center_lat, "lon": args.center_lon,
+            "source": "CONFIGURADA", "label": "Centro de comando",
+        }
+    API = CommandApi(
+        STORE, GATEWAY, args.demo, notify_change, sim=args.sim,
+        center_position=center_position,
+    )
 
     server = CommandServer((args.host, args.port), Handler)
     print("Command center en http://{}:{} (Ctrl+C para salir)".format(args.host, args.port))

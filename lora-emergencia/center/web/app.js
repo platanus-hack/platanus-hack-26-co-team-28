@@ -111,11 +111,11 @@ async function renderOverview() {
       ${metric(metrics.critical, "Solicitudes críticas")}${metric(metrics.pending, "Decisiones pendientes")}${metric(metrics.available_resources, "Recursos disponibles")}${metric(metrics.open_requests, "Solicitudes abiertas")}
     </section>
     <div class="grid">
-      <section class="panel"><div class="panel-head"><h3>Esquema de ubicaciones</h3><span class="muted">Posiciones observadas${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}</span></div><div id="map" class="map"><span class="map-note">Esquema offline · sin cartografía formal</span></div></section>
+      <section class="panel"><div class="panel-head"><h3>Esquema de ubicaciones</h3><span class="muted">${data.center_position ? "Centro configurado · posiciones observadas" : "Centro sin GPS · posiciones observadas"}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}</span></div><div id="map" class="map"><span class="map-note">Esquema offline · sin cartografía formal</span></div></section>
       <section class="panel"><div class="panel-head"><h3>Cola priorizada</h3><a class="button" href="#requests">Ver todas</a></div><div class="list">${data.requests.length ? data.requests.slice(0, 7).map(requestListItem).join("") : empty("Sin solicitudes abiertas")}</div></section>
     </div>
     <section class="panel" style="margin-top:16px"><div class="panel-head"><h3>Actividad reciente de radio</h3><a class="button" href="#network">Abrir red</a></div>${radioTable(data.recent_activity)}</section>`;
-  plotMap(data.requests, data.resources);
+  plotMap(data.requests, data.resources, data.center_position);
   bindRequestRows();
 }
 
@@ -128,8 +128,9 @@ function requestListItem(item) {
   </button>`;
 }
 
-function plotMap(requests, resources) {
+function plotMap(requests, resources, centerPosition) {
   const items = [
+    ...(centerPosition && validCoordinate(centerPosition.lat, centerPosition.lon) ? [{ ...centerPosition, mapType: "center", label: `${centerPosition.label} · ubicación ${centerPosition.source.toLowerCase()}` }] : []),
     ...requests.filter((item) => validCoordinate(item.lat, item.lon)).map((item) => ({ ...item, mapType: "request", label: `Solicitud #${item.id}` })),
     ...resources.filter((item) => validCoordinate(item.lat, item.lon)).map((item) => ({ ...item, mapType: "resource", label: item.node })),
   ];

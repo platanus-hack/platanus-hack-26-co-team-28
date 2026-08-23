@@ -55,7 +55,17 @@ class ApiTests(unittest.TestCase):
         overview = self.api.get("/api/v1/overview", {})
 
         self.assertIn("metrics", overview)
+        self.assertIsNone(overview["center_position"])
         self.assertEqual(overview["requests"][0]["id"], request_id)
+
+    def test_overview_exposes_configured_center_position(self):
+        position = {
+            "lat": 4.6767, "lon": -74.0483,
+            "source": "CONFIGURADA", "label": "Centro de comando",
+        }
+        api = CommandApi(self.store, self.gateway, center_position=position)
+
+        self.assertEqual(api.get("/api/v1/overview", {})["center_position"], position)
         with self.assertRaises(ApiError) as context:
             self.api.get("/api/v1/requests/not-a-number", {})
         self.assertEqual(context.exception.status, 400)

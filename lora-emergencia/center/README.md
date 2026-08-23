@@ -63,6 +63,14 @@ El servidor expone la API versionada bajo `/api/v1` y mantiene temporalmente los
 
 `center.py` funciona como gateway y bootstrap HTTP; `command_core.py` conserva dominio y SQLite, `api.py` expone contratos versionados y `web/` contiene el dashboard offline. El mapa actual es un esquema de coordenadas; la cartografía local sigue pendiente.
 
+La posición del puesto de mando no se presume: el TTGO central no incluye GPS. Para mostrar una ubicación fija configurada en el esquema:
+
+```bash
+python3 center.py /dev/ttyUSB0 --port 8081 --center-lat 4.6767 --center-lon -74.0483
+```
+
+La interfaz la identifica como `CONFIGURADA`, distinta de una posición observada por GPS. Si el centro se desplaza, debe actualizarse manualmente o integrarse un módulo GPS externo.
+
 ## Simular triage sin hardware
 
 ```bash

@@ -62,7 +62,7 @@ def optional_text(body, name, maximum, default=""):
 
 
 class CommandApi:
-    def __init__(self, store, gateway, demo=False, notify=None, sim=False):
+    def __init__(self, store, gateway, demo=False, notify=None, sim=False, center_position=None):
         self.store = store
         self.gateway = gateway
         self.demo = demo
@@ -70,6 +70,7 @@ class CommandApi:
         # LoRa) pero permite simular el operador de grua sin 3ra placa fisica.
         self.sim = sim or demo
         self.notify = notify or (lambda: None)
+        self.center_position = center_position
 
     def _request(self, request_id):
         request = self.store.get_request(request_id)
@@ -138,6 +139,7 @@ class CommandApi:
         radio = self.store.list_radio_events(limit=15)
         return {
             "gateway": bool(self.gateway and self.gateway.connected),
+            "center_position": self.center_position,
             "demo": self.demo,
             "metrics": {
                 "critical": sum(item["triage"]["priority"] == 0 for item in open_requests),
