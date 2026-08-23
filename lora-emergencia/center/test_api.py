@@ -61,6 +61,34 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(overview["requests"][0]["id"], request_id)
         self.assertIn("safe_people", overview)
 
+    def test_overview_reports_coverage_gaps_and_overlaps(self):
+        # La solicitud del setUp esta abierta y sin recurso: es un vacio.
+        overview = self.api.overview()
+
+        self.assertEqual(overview["metrics"]["gaps"], 1)
+        self.assertEqual(overview["metrics"]["overlaps"], 0)
+        self.assertEqual(overview["coverage"]["gaps"][0]["place"], "Centro")
+
+        # 2 recursos distintos trabajando en el mismo punto: es un solape.
+        # Cada solicitud va con la categoria de su recurso, si no el despacho
+        # lo rechaza el candado de compatibilidad.
+        self.store.ingest(RadioFrame.parse("RESCATE01|CENTRO|HB|1|RESCATE|CENTRO"), "-60", "9")
+        for node, sequence, category, resource in (
+            ("CIVIL8", "8", "MEDICO", "MEDICO01"),
+            ("CIVIL9", "9", "RESCATE", "RESCATE01"),
+        ):
+            self.store.ingest(RadioFrame.parse(
+                f"{node}|CENTRO|SOS|{sequence}|{category}|1|4.1|-74.1|Calle 80|dos equipos aqui"
+            ), "-70", "8")
+            request_id = next(item["id"] for item in self.store.list_requests() if item["node"] == node)
+            frame, _request = self.store.reserve_dispatch(request_id, resource)
+            self.store.mark_dispatched(request_id, resource, frame)
+
+        overview = self.api.overview()
+
+        self.assertEqual(overview["metrics"]["overlaps"], 1)
+        self.assertEqual(overview["coverage"]["overlaps"][0]["resources"], ["MEDICO01", "RESCATE01"])
+
     def test_overview_includes_recent_safe_people_details(self):
         self.store.ingest(RadioFrame.parse(
             "CIVIL2|CENTRO|OK|8|Jhomar|CC7435|4.65|-74.10|Portal norte"

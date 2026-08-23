@@ -181,6 +181,7 @@ async function renderOverview() {
     <section id="overview-metrics" class="metrics" aria-label="Métricas accionables">
       ${metric(metrics.critical, "Solicitudes críticas")}${metric(metrics.pending, "Decisiones pendientes")}${metric(metrics.available_resources, "Recursos disponibles")}${metric(metrics.open_requests, "Solicitudes abiertas")}
     </section>
+    <section id="overview-coverage" aria-label="Cobertura operativa">${coveragePanel(data.coverage)}</section>
     <div class="grid">
       <section class="panel map-panel"><div class="panel-head"><div><h3>Mapa operacional</h3><span id="map-positions-note" class="muted">${mapPositionsNote(data)}</span></div><div class="panel-actions"><button id="locate-center" class="button" type="button">Usar ubicación actual</button><button id="manual-center" class="button" type="button">Ingresar coordenadas</button></div></div>
         <div class="map-toolbar" aria-label="Controles del mapa">
@@ -208,15 +209,35 @@ async function renderOverview() {
   gatewayBadge.textContent = data.gateway ? "Gateway conectado" : "Sin radio";
   document.querySelector("#overview-safe-latest").innerHTML = latestSafeBadge(data.safe_people);
   document.querySelector("#map-positions-note").textContent = mapPositionsNote(data);
+  document.querySelector("#overview-coverage").innerHTML = coveragePanel(data.coverage);
   document.querySelector("#overview-queue").innerHTML = overviewQueue(data.requests);
   document.querySelector("#overview-safe").innerHTML = safeOverviewList(data.safe_people);
   document.querySelector("#overview-radio").innerHTML = radioTable(data.recent_activity);
   document.querySelector("#locate-center").onclick = locateCenter;
   document.querySelector("#manual-center").onclick = enterCenterPosition;
-  plotMap(data.requests, data.resources, data.center_position);
+  plotMap(data.requests, data.resources, data.center_position, data.coverage);
   bindRequestRows();
 }
 
+// Cobertura: las 2 fallas que el operador debe ver de un vistazo. Solape =
+// 2 equipos distintos en el mismo sector (esfuerzo duplicado). Vacío =
+// solicitud abierta sin nadie asignado. Ambas se calculan en triage.py y
+// se pintan también en el mapa (rojo / gris).
+function coveragePanel(coverage) {
+  const overlaps = coverage?.overlaps || [];
+  const gaps = coverage?.gaps || [];
+  if (!overlaps.length && !gaps.length) {
+    return `<div class="coverage-ok"><span class="badge success">Cobertura sin alertas</span> <span class="muted">Ningún sector duplicado y ninguna solicitud sin asignar.</span></div>`;
+  }
+  const overlapItems = overlaps.map((item) => `<button class="list-item list-button coverage-row" data-request-id="${item.request_ids[0]}"><div class="list-line"><span class="badge critical">Esfuerzo duplicado</span><strong>${item.resources.map(escapeHtml).join(" + ")}</strong></div><div class="cell-sub">Solicitudes ${item.request_ids.map((id) => `#${id}`).join(", ")} · dentro de ${Math.round(item.radius_km * 1000)} m entre sí</div></button>`).join("");
+  const gapItems = gaps.slice(0, 6).map((item) => `<button class="list-item list-button coverage-row" data-request-id="${item.request_id}"><div class="list-line"><span class="badge">Sin nadie asignado</span><strong>#${item.request_id} · ${escapeHtml(item.category || "")}</strong></div><div class="cell-sub">${escapeHtml(item.place || "Sin lugar")} · esperando ${waitLabel(item.waiting_seconds)}</div></button>`).join("");
+  return `<div class="panel coverage-panel"><div class="panel-head"><h3>Cobertura</h3><div class="panel-actions">${overlaps.length ? `<span class="badge critical">${overlaps.length} duplicado${overlaps.length === 1 ? "" : "s"}</span>` : ""}${gaps.length ? `<span class="badge warning">${gaps.length} sin asignar</span>` : ""}</div></div><div class="list">${overlapItems}${gapItems}</div>${gaps.length > 6 ? `<p class="muted" style="padding:0 16px 12px">Y ${gaps.length - 6} solicitudes más sin asignar.</p>` : ""}</div>`;
+}
+function waitLabel(seconds) {
+  if (seconds < 60) return `${seconds} s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
+  return `${Math.floor(seconds / 3600)} h`;
+}
 function mapPositionsNote(data) { return `Toca un punto para ver detalles · ${centerPositionLabel(data.center_position)}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}`; }
 function overviewQueue(requests) { return requests.length ? requests.slice(0, 7).map(requestListItem).join("") : empty("Sin solicitudes abiertas"); }
 function latestSafeBadge(items) {
@@ -304,10 +325,15 @@ const hybridMap = {
   mode: "offline",
 };
 
-function plotMap(requests, resources, centerPosition) {
+function plotMap(requests, resources, centerPosition, coverage) {
+  // El mapa marca las 2 fallas de cobertura: rojo = 2 equipos en el mismo
+  // sector (esfuerzo duplicado), gris = solicitud sin nadie asignado.
+  const overlapIds = new Set((coverage?.overlaps || []).flatMap((item) => item.request_ids));
+  const gapIds = new Set((coverage?.gaps || []).map((item) => item.request_id));
+  const coverageFlag = (item) => overlapIds.has(item.id) ? "overlap" : gapIds.has(item.id) ? "gap" : "";
   hybridMap.items = [
     ...(centerPosition && validCoordinate(centerPosition.lat, centerPosition.lon) ? [{ ...centerPosition, mapType: "center", key: "center" }] : []),
-    ...requests.filter((item) => validCoordinate(item.lat, item.lon)).map((item) => ({ ...item, mapType: "request", key: `request:${item.id}` })),
+    ...requests.filter((item) => validCoordinate(item.lat, item.lon)).map((item) => ({ ...item, mapType: "request", coverageFlag: coverageFlag(item), key: `request:${item.id}` })),
     ...resources.filter((item) => validCoordinate(item.lat, item.lon)).map((item) => ({ ...item, mapType: "resource", key: `resource:${item.node}` })),
   ];
   const mapElement = document.querySelector("#map");
@@ -594,12 +620,13 @@ function configureMarkerElement(marker) {
 
 function markerIcon(item, animateCritical, animateFresh = false) {
   const classes = ["operational-marker", item.mapType, markerFreshness(item)];
+  if (item.coverageFlag) classes.push(`coverage-${item.coverageFlag}`);
   if (animateCritical && item.mapType === "request" && (item.triage?.priority ?? item.priority) === 0 && ageSeconds(item.created_at) < 600) classes.push("critical-new");
   if (animateFresh && item.mapType === "resource" && markerFreshness(item) === "fresh") classes.push("fresh-animate");
   return window.L.divIcon({ className: classes.join(" "), html: "<span></span>", iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -22] });
 }
 
-function mapItemVisualSignature(item) { return [item.lat, item.lon, item.state, item.priority, item.triage?.priority, markerFreshness(item)].join("|"); }
+function mapItemVisualSignature(item) { return [item.lat, item.lon, item.state, item.priority, item.triage?.priority, item.coverageFlag, markerFreshness(item)].join("|"); }
 function mapItemPositionSignature(item) { return [item.lat, item.lon, item.position_seen_at].join("|"); }
 function mapItemContentSignature(item) { return `${markerLabel(item)}|${mapPopup(item)}`; }
 
@@ -748,6 +775,13 @@ function requestsTable(items) {
   if (!items.length) return empty("No hay solicitudes con estos filtros");
   return `<div class="table-wrap"><table><thead><tr><th>Solicitud</th><th>Prioridad efectiva</th><th>Estado</th><th>Asignación</th><th>Ingreso</th></tr></thead><tbody>${items.map((item) => `<tr class="clickable request-row" tabindex="0" data-request-id="${item.id}"><td><div class="cell-main">#${item.id} · ${escapeHtml(item.category)}</div><div class="cell-sub">${escapeHtml(item.detail || item.place || "Sin detalle")}</div></td><td>${priorityBadge(item.triage.priority)}${item.triage.priority < item.priority ? '<div class="cell-sub">Escalada desde nodo</div>' : ""}</td><td>${stateBadge(item.state)}</td><td class="mono">${escapeHtml(item.resource_node || "Sin asignar")}</td><td>${ago(item.created_at)}</td></tr>`).join("")}</tbody></table></div>`;
 }
+// Las filas de cobertura se re-renderizan en cada poll, asi que un listener
+// por fila se perderia. Delegacion en document: se registra una sola vez y
+// sobrevive a cada re-render (mismo patron que los botones de la grua).
+document.addEventListener("click", (event) => {
+  const row = event.target.closest(".coverage-row");
+  if (row) openRequest(Number(row.dataset.requestId));
+});
 function bindRequestRows() {
   document.querySelectorAll(".request-row").forEach((row) => {
     row.addEventListener("click", () => openRequest(Number(row.dataset.requestId)));

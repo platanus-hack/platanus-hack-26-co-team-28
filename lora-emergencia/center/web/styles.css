@@ -357,3 +357,17 @@ tbody tr.clickable:hover { background: var(--row-hover); }
 .user-tag-body { display: flex; flex-direction: column; line-height: 1.25; }
 .user-tag-name { font-size: 14.5px; font-weight: 600; color: var(--text); }
 .user-tag-role { font-size: 11.5px; color: var(--muted); }
+
+/* Cobertura: solape (2 equipos en el mismo sector) y vacío (solicitud sin
+   nadie asignado). Nunca solo color: el marcador de solape lleva un anillo
+   pulsante y el de vacío queda hueco, así se distinguen sin depender de
+   la vista de color (WCAG 1.4.1). */
+.operational-marker.coverage-overlap > span { box-shadow: 0 0 0 3px var(--red), 0 0 0 5px var(--marker-outline); }
+.operational-marker.coverage-overlap::after { content: ""; position: absolute; inset: 4px; border: 2px solid var(--red); border-radius: 50%; animation: coverage-pulse 1.6s ease-in-out infinite; }
+.operational-marker.coverage-gap > span { background: transparent; border-style: dashed; border-color: var(--muted); }
+@keyframes coverage-pulse { 0%, 100% { opacity: .85; transform: scale(1); } 50% { opacity: .25; transform: scale(1.25); } }
+@media (prefers-reduced-motion: reduce) { .operational-marker.coverage-overlap::after { animation: none; } }
+.coverage-panel { margin-bottom: 16px; }
+.coverage-panel .list { padding: 0 16px 16px; }
+.coverage-panel .list-button { width: 100%; text-align: left; cursor: pointer; }
+.coverage-ok { padding: 12px 16px; margin-bottom: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

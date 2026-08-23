@@ -4,7 +4,7 @@ import time
 from urllib.parse import unquote
 
 from command_core import VALID_CATEGORIES, RadioFrame, clean_field
-from triage import triage_request, triage_requests
+from triage import coverage_alerts, triage_request, triage_requests
 
 
 REQUEST_STATES = {
@@ -155,6 +155,10 @@ class CommandApi:
         )
         radio = self.store.list_radio_events(limit=15)
         safe_people = self.store.list_safe_people(limit=10)
+        # Cobertura: esfuerzo duplicado y solicitudes sin nadie asignado. Se
+        # calcula sobre las MISMAS solicitudes abiertas que ya se consultaron,
+        # sin tocar la base de datos otra vez.
+        coverage = coverage_alerts(open_requests)
         return {
             "gateway": bool(self.gateway and self.gateway.connected),
             "center_position": self.store.get_center_position(),
@@ -164,7 +168,10 @@ class CommandApi:
                 "pending": sum(item["state"] in {"PENDIENTE", "EN_REVISION", "ENVIO_INDETERMINADO"} for item in open_requests),
                 "available_resources": resource_counts["available"],
                 "open_requests": len(open_requests),
+                "overlaps": len(coverage["overlaps"]),
+                "gaps": len(coverage["gaps"]),
             },
+            "coverage": coverage,
             "requests": open_requests[:20],
             "safe_people": safe_people,
             "resources": resources,

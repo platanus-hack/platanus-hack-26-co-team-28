@@ -153,3 +153,101 @@ def triage_requests(requests: List[dict], resources: List[dict], now: Optional[f
         item["triage"] = triage_request(item, resources, now)
         triaged.append(item)
     return sorted(triaged, key=lambda item: (item["triage"]["priority"], item.get("created_at", item.get("t", 0))))
+
+
+# --- Cobertura: solape y vacio -------------------------------------------
+# Las 2 fallas que el centro debe ver de un vistazo, medidas en desastres
+# reales: equipos duplicados en un punto mientras otras zonas quedan solas.
+# Aceh 2004 tuvo 653 agencias financiadoras + 564 ejecutoras sin coordinar;
+# un centro de dialisis en Haiti opero al 20% "porque otros no sabian que
+# existia". El 3W oficial de OCHA admite detectar solapamientos solo de forma
+# superficial. Aqui se calcula sobre los datos que ya estan en SQLite.
+
+# Radio del sector operativo. 300 m son ~3 cuadras en Bogota: 2 equipos
+# dentro de ese radio trabajan el mismo punto.
+SECTOR_RADIUS_KM = 0.3
+# Solicitudes con un equipo ya trabajando en ellas.
+ASSIGNED_STATES = {"DESPACHADA", "ACEPTADA", "EN_CURSO"}
+# Solicitudes abiertas sin nadie en camino.
+UNASSIGNED_STATES = {"PENDIENTE", "EN_REVISION", "ENVIO_INDETERMINADO"}
+
+
+def cluster_by_proximity(locations: List[Tuple[float, float]], radius_km: float) -> List[List[int]]:
+    """Agrupa puntos por cercania y devuelve los indices de cada grupo.
+
+    Usa union-find, no un agrupado codicioso: 2 puntos lejanos entre si caen
+    en el mismo grupo cuando un tercero los enlaza, y el resultado no depende
+    del orden de entrada.
+    """
+    parent = list(range(len(locations)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    for first in range(len(locations)):
+        for second in range(first + 1, len(locations)):
+            if distance_km(locations[first], locations[second]) <= radius_km:
+                root_first, root_second = find(first), find(second)
+                if root_first != root_second:
+                    parent[max(root_first, root_second)] = min(root_first, root_second)
+
+    groups: dict = {}
+    for index in range(len(locations)):
+        groups.setdefault(find(index), []).append(index)
+    return [groups[key] for key in sorted(groups)]
+
+
+def coverage_alerts(requests: List[dict], now: Optional[float] = None) -> dict:
+    """Detecta esfuerzo duplicado y solicitudes sin nadie asignado.
+
+    - solape: 2 o mas recursos DISTINTOS trabajando dentro del mismo sector.
+      Un solo recurso con 2 solicitudes cercanas no es solape: es un equipo
+      que atiende 2 casos vecinos, que es lo correcto.
+    - vacio: solicitud abierta sin recurso asignado. Se ordena por espera,
+      la mas vieja primero, porque esa es la que mas riesgo acumula.
+    """
+    now = time.time() if now is None else now
+    ordered = sorted(requests, key=lambda item: item.get("id") or 0)
+
+    working: List[dict] = []
+    gaps: List[dict] = []
+    for request in ordered:
+        state = str(request.get("state", request.get("estado", ""))).upper()
+        resource = request.get("resource_node")
+        location = request_location(request)
+        if resource and state in ASSIGNED_STATES and location:
+            working.append({"request": request, "resource": resource, "location": location})
+        elif not resource and state in UNASSIGNED_STATES:
+            gaps.append(
+                {
+                    "request_id": request.get("id"),
+                    "category": request.get("category", request.get("cat", "")),
+                    "priority": request.get("priority", request.get("pri")),
+                    "lat": request.get("lat", ""),
+                    "lon": request.get("lon", ""),
+                    "place": request.get("place", request.get("lugar", "")) or "",
+                    "waiting_seconds": max(0, round(now - float(request.get("created_at") or now))),
+                }
+            )
+
+    overlaps = []
+    for group in cluster_by_proximity([item["location"] for item in working], SECTOR_RADIUS_KM):
+        members = [working[index] for index in group]
+        resources = sorted({member["resource"] for member in members})
+        if len(resources) < 2:
+            continue
+        overlaps.append(
+            {
+                "resources": resources,
+                "request_ids": [member["request"].get("id") for member in members],
+                "lat": round(sum(member["location"][0] for member in members) / len(members), 5),
+                "lon": round(sum(member["location"][1] for member in members) / len(members), 5),
+                "radius_km": SECTOR_RADIUS_KM,
+            }
+        )
+
+    gaps.sort(key=lambda item: -item["waiting_seconds"])
+    return {"overlaps": overlaps, "gaps": gaps}
