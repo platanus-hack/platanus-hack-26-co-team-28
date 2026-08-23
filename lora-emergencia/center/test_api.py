@@ -572,6 +572,18 @@ class HttpSafetyTests(unittest.TestCase):
         self.assertIn("animation: critical-pulse 800ms var(--ease-out) 3", styles)
         self.assertNotIn("resource-breathe 2.4s ease-in-out infinite", styles)
 
+    def test_installed_map_is_operational_and_request_markers_have_details(self):
+        app = (center.WEB_ROOT / "app.js").read_text(encoding="utf-8")
+        styles = (center.WEB_ROOT / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn('panel?.classList.toggle("map-installed", map.available)', app)
+        self.assertIn('marker.bindPopup(mapPopup(item)', app)
+        self.assertIn("map-popup-open-request", app)
+        self.assertIn("item.rssi || \"Sin dato\"", app)
+        self.assertIn("item.snr || \"Sin dato\"", app)
+        self.assertIn(".map-panel.map-installed .map-toolbar", styles)
+        self.assertIn(".map-panel.map-installed .panel-actions", styles)
+
     def test_simulator_http_guard_returns_not_found(self):
         status, _content_type, _body = self.request(
             "POST", "/api/v1/simulator/scenarios", json.dumps({"scenario": "rescue"}),

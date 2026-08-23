@@ -95,6 +95,11 @@ tbody tr.clickable:hover { background: #fafafa; }
 .cell-main { font-weight: 560; }
 .cell-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .map-panel { position: relative; }
+.map-panel.map-installed .panel-actions,
+.map-panel.map-installed .map-toolbar,
+.map-panel.map-installed .map-download-status,
+.map-panel.map-installed .map-privacy { display: none; }
+.map-panel.map-installed .panel-head { min-height: 60px; }
 .map-toolbar { min-height: 60px; padding: 8px 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--border); }
 .map-toolbar .button { padding-inline: 11px; }
 .map-toggle[aria-pressed="false"] { color: var(--muted); background: var(--surface-subtle); text-decoration: line-through; }
@@ -139,9 +144,14 @@ tbody tr.clickable:hover { background: #fafafa; }
 .legend-state { border-radius: 50%; border: 2px solid var(--green); }
 .legend-state.aging { border-color: var(--amber); border-style: dashed; }
 .legend-state.stale { border-color: #888; background: #ddd; }
-.map-popup dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 8px 0 0; }
+.map-popup { min-width: 230px; color: var(--text); }
+.map-popup > strong { display: block; margin-top: 2px; font-size: 15px; }
+.map-popup-kicker { display: block; color: var(--muted); font-size: 10px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; }
+.map-popup p { margin: 7px 0 0; line-height: 1.4; }
+.map-popup dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 9px 0 0; }
 .map-popup dt { color: var(--muted); }
 .map-popup dd { margin: 0; }
+.map-popup-open-request { width: 100%; margin-top: 11px; justify-content: center; }
 .leaflet-container { font-family: inherit; }
 .leaflet-control-zoom a { min-width: 44px; min-height: 44px; display: grid; place-items: center; line-height: 1; }
 .leaflet-control-attribution { padding: 3px 6px; background: rgba(255,255,255,.92); }

@@ -178,7 +178,7 @@ async function renderOverview() {
   bindRequestRows();
 }
 
-function mapPositionsNote(data) { return `${centerPositionLabel(data.center_position)}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}`; }
+function mapPositionsNote(data) { return `Toca un punto para ver detalles · ${centerPositionLabel(data.center_position)}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}`; }
 function overviewQueue(requests) { return requests.length ? requests.slice(0, 7).map(requestListItem).join("") : empty("Sin solicitudes abiertas"); }
 function latestSafeBadge(items) {
   if (!items?.length) return "";
@@ -419,6 +419,9 @@ function updateOfflineMapControl() {
   const message = document.querySelector("#map-download-status");
   if (!button || !message || !state.offlineMap) return;
   const map = state.offlineMap;
+  const panel = document.querySelector(".map-panel");
+  panel?.classList.toggle("map-installed", map.available);
+  panel?.classList.toggle("map-setup", !map.available);
   button.hidden = map.available || map.downloading;
   button.disabled = map.downloading;
   button.textContent = map.error ? "Reintentar descarga del mapa offline" : "Descargar mapa offline de Bogotá";
@@ -496,7 +499,7 @@ function updateMapMarkers() {
       }
       if (record.contentSignature !== contentSignature) {
         configureMarkerElement(record.marker);
-        if (item.mapType !== "request") record.marker.setPopupContent(mapPopup(item));
+        record.marker.setPopupContent(mapPopup(item));
         record.contentSignature = contentSignature;
       }
       record.positionSignature = positionSignature;
@@ -518,8 +521,11 @@ function createLeafletMarker(item) {
   });
   marker._operationalItem = item;
   marker.on("add", () => configureMarkerElement(marker));
-  if (item.mapType === "request") marker.on("click", () => openRequest(Number(item.id)));
-  else marker.bindPopup(mapPopup(item), { className: "resource-popup", closeButton: true });
+  marker.bindPopup(mapPopup(item), { className: "resource-popup", closeButton: true, maxWidth: 310 });
+  marker.on("popupopen", () => {
+    const button = marker.getPopup()?.getElement()?.querySelector(".map-popup-open-request");
+    if (button) button.onclick = () => openRequest(Number(marker._operationalItem.id));
+  });
   return marker;
 }
 
@@ -544,7 +550,7 @@ function markerIcon(item, animateCritical, animateFresh = false) {
 
 function mapItemVisualSignature(item) { return [item.lat, item.lon, item.state, item.priority, item.triage?.priority, markerFreshness(item)].join("|"); }
 function mapItemPositionSignature(item) { return [item.lat, item.lon, item.position_seen_at].join("|"); }
-function mapItemContentSignature(item) { return item.mapType === "request" ? markerLabel(item) : `${markerLabel(item)}|${mapPopup(item)}`; }
+function mapItemContentSignature(item) { return `${markerLabel(item)}|${mapPopup(item)}`; }
 
 function markerFreshness(item) {
   if (item.mapType !== "resource") return "";
@@ -563,8 +569,12 @@ function markerLabel(item) {
 }
 
 function mapPopup(item) {
-  if (item.mapType === "center") return `<div class="map-popup" tabindex="-1"><strong>${escapeHtml(item.label || "Centro de comando")}</strong><dl><dt>Fuente</dt><dd>${escapeHtml(item.source.toLowerCase())}</dd><dt>Capturada</dt><dd>${ago(item.captured_at)}</dd></dl></div>`;
-  return `<div class="map-popup" tabindex="-1"><strong class="mono">${escapeHtml(item.node)}</strong><dl><dt>Estado</dt><dd>${escapeHtml(item.state || "Sin dato")}</dd><dt>Contacto</dt><dd>${ago(item.last_seen)}</dd><dt>Posición</dt><dd>${ago(item.position_seen_at)}</dd></dl></div>`;
+  if (item.mapType === "center") return `<div class="map-popup" tabindex="-1"><span class="map-popup-kicker">Centro de comando</span><strong>${escapeHtml(item.label || "Centro de comando")}</strong><dl><dt>Fuente</dt><dd>${escapeHtml((item.source || "configurada").toLowerCase())}</dd><dt>Capturada</dt><dd>${ago(item.captured_at)}</dd><dt>Coordenadas</dt><dd class="mono">${escapeHtml(item.lat)}, ${escapeHtml(item.lon)}</dd></dl></div>`;
+  if (item.mapType === "request") {
+    const priority = item.triage?.priority ?? item.priority;
+    return `<div class="map-popup request-popup" tabindex="-1"><span class="map-popup-kicker">Solicitud #${item.id} · ${ago(item.created_at)}</span><strong>${escapeHtml(item.category || "Sin categoría")}</strong><p>${escapeHtml(item.detail || item.place || "Sin detalle reportado")}</p><dl><dt>Estado</dt><dd>${escapeHtml(item.state || "PENDIENTE")}</dd><dt>Prioridad</dt><dd>${escapeHtml(priority)}</dd><dt>Nodo</dt><dd class="mono">${escapeHtml(item.node)}</dd><dt>Ubicación</dt><dd>${escapeHtml(item.place || `${item.lat}, ${item.lon}`)}</dd><dt>RSSI / SNR</dt><dd class="mono">${escapeHtml(item.rssi || "Sin dato")} / ${escapeHtml(item.snr || "Sin dato")}</dd>${item.resource_node ? `<dt>Asignado</dt><dd class="mono">${escapeHtml(item.resource_node)}</dd>` : ""}</dl><button class="button map-popup-open-request" type="button">Ver solicitud completa</button></div>`;
+  }
+  return `<div class="map-popup" tabindex="-1"><span class="map-popup-kicker">Recurso conectado</span><strong class="mono">${escapeHtml(item.node)}</strong><dl><dt>Tipo</dt><dd>${escapeHtml(item.kind || "Sin definir")}</dd><dt>Estado</dt><dd>${escapeHtml(item.state || "Sin dato")}</dd><dt>Zona</dt><dd>${escapeHtml(item.zone || "Sin asignar")}</dd><dt>Contacto</dt><dd>${ago(item.last_seen)}</dd><dt>Posición</dt><dd>${ago(item.position_seen_at)}</dd><dt>RSSI / SNR</dt><dd class="mono">${escapeHtml(item.rssi || "Sin dato")} / ${escapeHtml(item.snr || "Sin dato")}</dd></dl></div>`;
 }
 
 function updateMapVisibility() {
