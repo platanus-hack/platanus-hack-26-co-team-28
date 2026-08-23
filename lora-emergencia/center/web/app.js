@@ -68,7 +68,7 @@ const empty = (message) => `<div class="empty">${escapeHtml(message)}</div>`;
 // turno (chip en los formularios). Son personas distintas: el responsable recibe
 // la asignacion; el operador ejecuta la accion en el puesto de mando.
 const RESPONSABLE_GRUA = "Manuel Vargas";
-const OPERADOR = "Juan Ortega";
+const OPERADOR = "Manuel Vargas";
 const assignedTag = (name) => `<span class="badge success">Asignado: ${escapeHtml(name)}</span>`;
 const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 // Chip de un usuario ya guardado (no un input de texto libre). Se ve como un tag
