@@ -14,8 +14,15 @@
 # los marca con un badge "Simulado" para que no se confundan (ver app.js,
 # RECURSOS_CON_OPERADOR).
 #
+# Un nodo LoRa real manda un latido (HB) periodico. Si el centro no sabe nada
+# de un nodo hace mas de 10 min (triage.RESOURCE_MAX_AGE_SECONDS), deja de
+# proponerlo como candidato: puede estar sin bateria o fuera de alcance. Por
+# eso estos recursos tambien tienen que latir, si no desaparecen del despacho
+# aunque la tabla de Recursos los siga mostrando como 'disponible'.
+#
 # USO:
-#   python3 scripts/sembrar_recursos.py
+#   python3 scripts/sembrar_recursos.py              (1 latido, caduca en 10 min)
+#   python3 scripts/sembrar_recursos.py --mantener & (late cada 60 s, para el demo)
 #   python3 scripts/sembrar_recursos.py --base http://127.0.0.1:8080
 # ============================================================================
 import argparse
@@ -36,13 +43,8 @@ RECURSOS = [
 ]
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--base", default="http://127.0.0.1:8080")
-    args = p.parse_args()
-    base = args.base.rstrip("/")
-
-    seq = int(time.time()) % 100000
+def latir(base, seq):
+    """Manda un HB+POS por cada recurso. Devuelve el siguiente numero de seq."""
     frames = []
     for node, kind, zona, lat, lon in RECURSOS:
         seq += 1
@@ -53,9 +55,24 @@ def main():
     data = json.dumps({"frames": frames}).encode()
     req = urllib.request.Request(base + "/api/v1/simulator/frames", data=data,
                                  headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=8) as r:
+        r.read()
+    return seq
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--base", default="http://127.0.0.1:8080")
+    p.add_argument("--mantener", action="store_true",
+                   help="sigue latiendo cada --intervalo segundos (no termina)")
+    p.add_argument("--intervalo", type=int, default=60,
+                   help="segundos entre latidos con --mantener (default 60)")
+    args = p.parse_args()
+    base = args.base.rstrip("/")
+
+    seq = int(time.time()) % 100000
     try:
-        with urllib.request.urlopen(req, timeout=8) as r:
-            r.read()
+        seq = latir(base, seq)
     except urllib.error.HTTPError as e:
         print("Error HTTP {}: {}".format(e.code, e.read().decode()))
         print("Recuerda arrancar el centro con --sim (el simulador debe estar activo).")
@@ -68,7 +85,28 @@ def main():
     for node, kind, zona, lat, lon in RECURSOS:
         print("  {} · {} · {} · {},{}".format(node, kind, zona, lat, lon))
     print("Recuerda: son datos, no una placa real. Si se despachan, nadie los acepta por ACC.")
-    return 0
+
+    if not args.mantener:
+        # Sin --mantener el triage los descarta a los 10 min (RESOURCE_MAX_AGE
+        # _SECONDS): un nodo sin contacto reciente puede estar sin bateria o
+        # fuera de alcance, y no se le debe despachar nada.
+        print("")
+        print("AVISO: un solo latido. En 10 min el triage dejara de proponerlos.")
+        print("Para el demo, dejalos vivos:  python3 scripts/sembrar_recursos.py --mantener &")
+        return 0
+
+    print("")
+    print("Latiendo cada {} s. Ctrl+C para parar.".format(args.intervalo))
+    while True:
+        try:
+            time.sleep(args.intervalo)
+            seq = latir(base, seq)
+        except KeyboardInterrupt:
+            print("\nDetenido. Los recursos caducan en 10 min sin latidos.")
+            return 0
+        except Exception as e:  # noqa: BLE001
+            # El centro puede estar reiniciandose: reintenta en el proximo ciclo.
+            print("latido fallido ({}), reintento en {} s".format(e, args.intervalo))
 
 
 if __name__ == "__main__":

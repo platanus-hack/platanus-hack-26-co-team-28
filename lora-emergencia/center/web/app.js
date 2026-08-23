@@ -91,6 +91,13 @@ const OPERADOR_POR_RECURSO = {
 const RECURSOS_CON_OPERADOR = new Set(Object.keys(OPERADOR_POR_RECURSO));
 const esRecursoSimulado = (node) => !RECURSOS_CON_OPERADOR.has(node);
 const simuladoBadge = (node) => esRecursoSimulado(node) ? ` <span class="badge" title="Datos sembrados para el demo, sin operador real detrás">Simulado</span>` : "";
+// Espejo de triage.RESOURCE_MAX_AGE_SECONDS. Un recurso sin contacto reciente
+// sigue marcado "disponible" (su último estado conocido), pero el triage deja
+// de proponerlo: puede estar sin batería o fuera de alcance. Sin este aviso la
+// tabla dice "disponible" y el despacho no lo ofrece, que se lee como un error.
+const RESOURCE_MAX_AGE_SECONDS = 600;
+const sinContacto = (item) => ageSeconds(item.last_seen) > RESOURCE_MAX_AGE_SECONDS;
+const sinContactoBadge = (item) => sinContacto(item) ? ` <span class="badge warning" title="Sin contacto hace más de 10 minutos: el triage no lo propone para despacho">Sin contacto</span>` : "";
 // El chip de "Solicitar grúa" cambia segun el recurso elegido en el
 // desplegable: si tiene operador real, muestra a esa persona (ej. Manuel
 // Vargas para GRUA07); si es un recurso simulado, el despacho lo autoriza el
@@ -870,7 +877,7 @@ async function renderResources() {
 }
 function resourcesTable(items) {
   if (!items.length) return empty("No hay recursos con estos filtros");
-  return `<div class="table-wrap"><table><thead><tr><th>Nodo / tipo</th><th>Estado</th><th>Zona</th><th>Heartbeat</th><th>Posición</th><th>Radio</th></tr></thead><tbody>${items.map((item) => `<tr><td><div class="cell-main mono">${escapeHtml(item.node)}${simuladoBadge(item.node)}</div><div class="cell-sub">${escapeHtml(item.kind)}</div></td><td>${stateBadge(item.state)}</td><td>${escapeHtml(item.zone)}</td><td>${ago(item.last_seen)}</td><td>${item.position_seen_at ? `${ago(item.position_seen_at)}<div class="cell-sub mono">${escapeHtml(item.lat)}, ${escapeHtml(item.lon)} · ±${escapeHtml(item.accuracy || "—")} m</div>` : "Sin posición"}</td><td class="mono">RSSI ${escapeHtml(item.rssi || "—")}<br>SNR ${escapeHtml(item.snr || "—")}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Nodo / tipo</th><th>Estado</th><th>Zona</th><th>Heartbeat</th><th>Posición</th><th>Radio</th></tr></thead><tbody>${items.map((item) => `<tr><td><div class="cell-main mono">${escapeHtml(item.node)}${simuladoBadge(item.node)}</div><div class="cell-sub">${escapeHtml(item.kind)}</div></td><td>${stateBadge(item.state)}${sinContactoBadge(item)}</td><td>${escapeHtml(item.zone)}</td><td>${ago(item.last_seen)}</td><td>${item.position_seen_at ? `${ago(item.position_seen_at)}<div class="cell-sub mono">${escapeHtml(item.lat)}, ${escapeHtml(item.lon)} · ±${escapeHtml(item.accuracy || "—")} m</div>` : "Sin posición"}</td><td class="mono">RSSI ${escapeHtml(item.rssi || "—")}<br>SNR ${escapeHtml(item.snr || "—")}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 async function renderNetwork() {

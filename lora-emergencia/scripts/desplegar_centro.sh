@@ -134,6 +134,15 @@ echo ">> Registrando la grua del demo ..."
 python3 "$REPO/scripts/registrar_grua.py" --base "$BASE" || \
   echo "AVISO: no se pudo registrar la grua. Registrala luego con scripts/registrar_grua.py"
 
+# --- 7b. Recursos simulados, con latido ---------------------------------------
+# Corre en segundo plano: un nodo sin latido caduca a los 10 min y el triage
+# deja de proponerlo, aunque la tabla lo siga mostrando como 'disponible'.
+echo ">> Sembrando recursos simulados (con latido) ..."
+python3 "$REPO/scripts/sembrar_recursos.py" --base "$BASE" --mantener > /dev/null 2>&1 &
+SEED_PID=$!
+# Al salir, se lleva el mantenedor consigo.
+trap 'kill "$SEED_PID" 2>/dev/null || true' EXIT
+
 # --- 8. URLs y paso a primer plano ------------------------------------------
 echo ""
 echo "========================================================"
