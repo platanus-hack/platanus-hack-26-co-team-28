@@ -10,7 +10,34 @@
 #include <RadioLib.h>
 #include <esp_http_server.h>
 #include <esp_https_server.h>
+#include <Wire.h>
+#include <U8g2lib.h>
 #include "credentials.h"
+
+// OLED I2C del T3 V1.6.1 (SDA 21, SCL 22, 0x3C). Muestra el estado del punto de ayuda.
+#define OLED_SDA 21
+#define OLED_SCL 22
+#define OLED_ADDR 0x3C
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
+bool tieneOled = false;
+int enviados = 0;
+
+bool detectarOled() {
+  Wire.begin(OLED_SDA, OLED_SCL);
+  Wire.beginTransmission(OLED_ADDR);
+  return Wire.endTransmission() == 0;
+}
+// Muestra 3 lineas en la OLED del rescatista.
+void oledMostrar(const String& l1, const String& l2, const String& l3) {
+  if (!tieneOled) return;
+  oled.clearBuffer();
+  oled.setFont(u8g2_font_ncenB10_tr);
+  oled.drawStr(0, 14, l1.c_str());
+  oled.setFont(u8g2_font_6x12_tr);
+  oled.drawStr(0, 34, l2.c_str());
+  oled.drawStr(0, 52, l3.c_str());
+  oled.sendBuffer();
+}
 
 // --- Pines LoRa (T3 V1.6.1) ---
 #define LORA_SCK 5
@@ -113,6 +140,10 @@ bool enviarFrame(String msg, int id) {
     if (!acked) { intento++; delay(random(100, 500)); }
   }
   Serial.println(acked ? "[NODO] ACK OK (id " + String(id) + ")" : "[NODO] sin ACK tras 3 intentos");
+  if (acked) enviados++;
+  oledMostrar(acked ? "ENVIADO OK" : "REENVIANDO...",
+              "id " + String(id) + (acked ? "  confirmado" : "  sin ACK"),
+              "reportes: " + String(enviados));
   return acked;
 }
 
@@ -140,76 +171,7 @@ bool enviarOK(String nombre, String doc, String lat, String lon, String lugar) {
 }
 
 // ---------- pagina HTTPS ----------
-static const char PAGE_HTTPS[] = R"HTML(<!doctype html><html lang='es'><head><meta charset='utf-8'>
-<meta name='viewport' content='width=device-width,initial-scale=1'>
-<style>body{font-family:-apple-system,Arial,sans-serif;margin:0;color:#111;background:#f5f6f8}
-.wrap{max-width:520px;margin:0 auto;padding:16px}
-.hdr{background:#d92d20;color:#fff;padding:16px;border-radius:0 0 12px 12px;text-align:center}
-.hdr h1{margin:0;font-size:22px}
-.card{background:#fff;border-radius:12px;padding:14px;margin-top:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
-h2{font-size:16px;margin:0 0 10px}
-label{display:block;font-weight:700;margin:12px 0 6px;font-size:14px}
-input{width:100%;padding:14px;font-size:16px;border:2px solid #ccc;border-radius:10px;box-sizing:border-box}
-button{width:100%;padding:18px;font-size:18px;font-weight:700;border:0;border-radius:12px;margin-top:10px;color:#fff}
-.b1{background:#b42318}.b2{background:#d92d20}.b3{background:#c2410c}.b4{background:#1570ef}.b5{background:#067647}
-#msg{padding:16px;border-radius:12px;font-size:17px;margin-top:12px;display:none}
-.ok{background:#ecfdf3;border:2px solid #067647;color:#054f31}
-.warn{background:#fffaeb;border:2px solid #b54708;color:#7a2e0e}
-.note{font-size:12px;color:#666;margin-top:8px}</style></head><body>
-<div class='wrap'><div class='hdr'><h1>PUNTO DE AYUDA 911</h1></div>
-<div id='msg'></div>
-<div class='card'>
- <h2>Pedir ayuda</h2>
- <label>Donde estas? (si no hay GPS, escribe el lugar)</label>
- <input id='lugar' maxlength='50' placeholder='ej: Portal 80 con calle 13, torre B'>
- <label>Detalle (opcional)</label>
- <input id='det' maxlength='50' placeholder='ej: 2 personas atrapadas, sotano'>
- <button class='b1' onclick="sos('RESCATE','0')">Rescate: hay atrapados</button>
- <button class='b2' onclick="sos('MEDICO','0')">Ayuda medica urgente</button>
- <button class='b3' onclick="sos('GRUA','1')">Grua / vehiculo pesado</button>
- <button class='b4' onclick="sos('AGUA','3')">Agua / comida</button>
-</div>
-<div class='card'>
- <h2>Estoy a salvo</h2>
- <p class='note'>Deja tus datos. Si aparece internet, tu familia podra saber que estas bien.</p>
- <label>Nombre completo</label>
- <input id='nombre' maxlength='50' placeholder='ej: Juan Perez'>
- <label>Documento (cedula)</label>
- <input id='doc' maxlength='50' placeholder='ej: CC 1032456'>
- <button class='b5' onclick="salvo()">Reportarme a salvo</button>
-</div>
-<p class='note' style='text-align:center'>Tu ubicacion GPS se envia sola si la autorizas.</p></div>
-<script>
-function val(id){return document.getElementById(id).value;}
-function enc(s){return encodeURIComponent(s);}
-function show(t,cls){var m=document.getElementById('msg');m.style.display='block';m.className=cls;m.innerHTML=t;}
-function gps(cb){
- if(!navigator.geolocation){cb('','');return;}
- navigator.geolocation.getCurrentPosition(
-  function(p){cb(p.coords.latitude.toFixed(5),p.coords.longitude.toFixed(5));},
-  function(e){cb('','');},
-  {enableHighAccuracy:true,timeout:8000,maximumAge:0});
-}
-function post(body){
- fetch('/report',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
-  .then(r=>r.text()).then(t=>{
-   if(t.indexOf('OK')>=0)show('<b>Confirmado por el puesto de mando.</b> Quedate en un lugar seguro.','ok');
-   else show('<b>Guardado. Reintentando por radio...</b> Espera aqui.','warn');})
-  .catch(e=>show('Error de envio. Intenta otra vez.','warn'));
-}
-function sos(cat,pri){
- show('Obteniendo tu ubicacion...','warn');
- var lugar=val('lugar'),det=val('det');
- gps(function(la,lo){post('accion=sos&cat='+cat+'&pri='+pri+'&lat='+la+'&lon='+lo+'&lugar='+enc(lugar)+'&detalle='+enc(det));});
-}
-function salvo(){
- var n=val('nombre'),d=val('doc');
- if(!n||!d){show('Escribe tu <b>nombre</b> y tu <b>documento</b> para avisar que estas a salvo.','warn');return;}
- show('Obteniendo tu ubicacion...','warn');
- var lugar=val('lugar');
- gps(function(la,lo){post('accion=ok&nombre='+enc(n)+'&doc='+enc(d)+'&lat='+la+'&lon='+lo+'&lugar='+enc(lugar));});
-}
-</script></body></html>)HTML";
+#include "portal_page.h"
 
 // Estilos compartidos
 static const char* CSS =
@@ -347,6 +309,10 @@ void setup() {
   delay(300);
   randomSeed(analogRead(0));
 
+  tieneOled = detectarOled();
+  Serial.println(tieneOled ? "[NODO] OLED detectado" : "[NODO] sin OLED");
+  if (tieneOled) { oled.begin(); oledMostrar("PUNTO AYUDA", "iniciando...", ""); }
+
   SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
   Serial.print("[NODO] LoRa... ");
   int e = radio.begin(915.0, 125.0, 7, 5, 0x12, 20, 8);
@@ -396,6 +362,7 @@ void setup() {
   }
 
   Serial.println("[NODO] Portal listo. https://ayuda.homiapp.xyz");
+  oledMostrar("PUNTO AYUDA", "red: AYUDA...911", "esperando pedidos");
 }
 
 void loop() {
