@@ -4,13 +4,18 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 
-import { CommandCenterSidebar } from "@/components/CommandCenterSidebar";
 import type { OnboardingGuide, OnboardingStepId } from "@/lib/onboarding";
 
 import styles from "./setup.module.css";
 
 type ProviderState = "idle" | "loading" | "success" | "fallback" | "error";
 type CopyState = "idle" | "copying" | "success" | "error";
+type AiProvider = "chatgpt" | "claude";
+
+const AI_DESTINATIONS = {
+  chatgpt: { label: "ChatGPT", url: "https://chatgpt.com/" },
+  claude: { label: "Claude", url: "https://claude.ai/new" },
+} satisfies Record<AiProvider, { label: string; url: string }>;
 
 function SpeakerIcon() {
   return (
@@ -30,6 +35,21 @@ function CopyIcon() {
   );
 }
 
+function AiIcon({ provider }: { provider: AiProvider }) {
+  if (provider === "claude") {
+    return (
+      <span className={`${styles.aiLogo} ${styles.claudeLogo}`} aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4M8.5 3.8l7 16.4M20.2 8.5l-16.4 7" /></svg>
+      </span>
+    );
+  }
+  return (
+    <span className={`${styles.aiLogo} ${styles.chatGptLogo}`} aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M12 4.1a4 4 0 0 1 6.8 2.8 4 4 0 0 1 .8 7.4 4 4 0 0 1-5.9 5.4 4 4 0 0 1-7-2.4 4 4 0 0 1-.9-7.4A4 4 0 0 1 12 4.1Z" /><path d="m8.2 9.8 3.8-2.2 3.8 2.2v4.4L12 16.4l-3.8-2.2V9.8Z" /></svg>
+    </span>
+  );
+}
+
 export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
   const [simulation, setSimulation] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -37,6 +57,7 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
   const [voiceState, setVoiceState] = useState<ProviderState>("idle");
   const [voiceMessage, setVoiceMessage] = useState("");
   const [copyState, setCopyState] = useState<CopyState>("idle");
+  const [copyTarget, setCopyTarget] = useState<AiProvider | null>(null);
   const [finished, setFinished] = useState(false);
   const step = guide.steps[activeIndex];
   const isCompleted = completed.includes(step.id);
@@ -96,7 +117,11 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
     }
   }
 
-  async function copySetupPrompt() {
+  async function copySetupPrompt(provider: AiProvider, openAfterCopy = false) {
+    const destination = AI_DESTINATIONS[provider];
+    const openedWindow = openAfterCopy ? window.open("about:blank", "_blank") : null;
+    if (openedWindow) openedWindow.opener = null;
+    setCopyTarget(provider);
     setCopyState("copying");
     try {
       const response = await fetch("/onboarding/WOKI-SETUP-PROMPT.md");
@@ -104,8 +129,13 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
       const prompt = await response.text();
       await navigator.clipboard.writeText(prompt);
       setCopyState("success");
+      if (openAfterCopy) {
+        if (openedWindow) openedWindow.location.href = destination.url;
+        else window.open(destination.url, "_blank", "noopener,noreferrer");
+      }
     } catch {
       setCopyState("error");
+      if (openedWindow) openedWindow.location.href = destination.url;
     }
   }
 
@@ -125,23 +155,13 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
   }
 
   return (
-    <div className="app-shell">
+    <div className={styles.setupShell}>
       <a className="skip-link" href="#setup-content">Ir al contenido</a>
-      <CommandCenterSidebar setup />
 
-      <div className="workspace">
+      <div className={styles.setupWorkspace}>
         <header className="topbar">
           <div><p className="eyebrow">Configuración</p><h1>Preparar kit</h1></div>
           <div className={styles.topbarActions}>
-            <button
-              className={`${styles.promptButton} ${copyState === "success" ? styles.copySuccess : copyState === "error" ? styles.copyError : ""}`}
-              disabled={copyState === "copying"}
-              type="button"
-              onClick={() => void copySetupPrompt()}
-            >
-              <CopyIcon />
-              {copyState === "copying" ? "Copiando…" : copyState === "success" ? "Prompt copiado" : copyState === "error" ? "Reintentar" : "Copiar prompt"}
-            </button>
             <div className="topbar-status">
               <span className={styles.modeLabel}>Simular sin dispositivos</span>
               <button
@@ -231,6 +251,34 @@ export function OnboardingWizard({ guide }: { guide: OnboardingGuide }) {
                       {step.documentation && <a href={step.documentation} target="_blank" rel="noreferrer">{step.documentationLabel ?? "Abrir documentación"} ↗</a>}
                     </details>
                   )}
+
+                  <details className={styles.aiPrompt}>
+                    <summary className={styles.promptTrigger}>
+                      <CopyIcon />
+                      {copyState === "success" ? `Prompt copiado para ${copyTarget ? AI_DESTINATIONS[copyTarget].label : "IA"}` : "Copiar prompt para una IA"}
+                      <span aria-hidden="true">⌄</span>
+                    </summary>
+                    <div className={styles.promptMenu}>
+                      <div className={styles.promptIntro}><strong>Continúa con tu IA</strong><span>El prompt incluye los 7 pasos, comandos y documentación.</span></div>
+                      {(Object.keys(AI_DESTINATIONS) as AiProvider[]).map((provider) => {
+                        const destination = AI_DESTINATIONS[provider];
+                        const activeCopy = copyTarget === provider;
+                        return (
+                          <div className={styles.aiOption} key={provider}>
+                            <AiIcon provider={provider} />
+                            <strong>{destination.label}</strong>
+                            <div className={styles.aiActions}>
+                              <button disabled={copyState === "copying"} type="button" onClick={() => void copySetupPrompt(provider)}>
+                                {activeCopy && copyState === "copying" ? "Copiando…" : activeCopy && copyState === "success" ? "Copiado" : "Copiar"}
+                              </button>
+                              <button disabled={copyState === "copying"} type="button" onClick={() => void copySetupPrompt(provider, true)}>Copiar y abrir ↗</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <span className={styles.srOnly} aria-live="polite">{copyState === "error" ? "No se pudo copiar el prompt." : copyState === "success" ? "Prompt copiado." : ""}</span>
+                    </div>
+                  </details>
 
                   <div className={styles.actions}>
                     <button className={styles.primaryButton} type="button" onClick={runPrimaryAction}>

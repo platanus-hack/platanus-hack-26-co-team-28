@@ -1,12 +1,8 @@
+.setupShell { min-height: 100vh; background: var(--bg); }
+.setupWorkspace { min-width: 0; }
 .main { width: min(1240px, 100%); }
 
 .topbarActions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
-.promptButton { min-height: 36px; padding: 7px 11px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border-strong); border-radius: 7px; color: var(--nav-text); background: var(--surface); font: 600 12px var(--font-sans); white-space: nowrap; cursor: pointer; }
-.promptButton:hover { color: var(--text); border-color: var(--strong); }
-.promptButton:disabled { cursor: progress; opacity: .65; }
-.promptButton svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.copySuccess { color: var(--green); border-color: var(--success-border); background: var(--green-soft); }
-.copyError { color: var(--amber); border-color: var(--warning-border); background: var(--amber-soft); }
 .modeLabel { color: var(--muted); font: 12px var(--font-sans); }
 .switch { width: 38px; height: 22px; padding: 2px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--blue); cursor: pointer; }
 .switch span { display: block; width: 16px; height: 16px; margin-left: 16px; border-radius: 50%; background: var(--surface); transition: margin 140ms ease; }
@@ -61,6 +57,29 @@
 .technical pre { margin: 9px 0; padding: 10px; overflow-x: auto; border-radius: 6px; color: #dbeafe; background: var(--strong); font: 11px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .technical a { color: var(--action-text); font-weight: 600; }
 
+.aiPrompt { position: relative; }
+.promptTrigger { min-height: 42px; padding: 9px 12px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--strong); border-radius: 7px; color: white; background: var(--strong); font: 600 13px var(--font-sans); cursor: pointer; list-style: none; }
+.promptTrigger::-webkit-details-marker { display: none; }
+.promptTrigger:hover { background: #2a2a2a; }
+.promptTrigger > span:last-child { margin-left: auto; font-size: 16px; transition: transform 140ms ease; }
+.aiPrompt[open] .promptTrigger > span:last-child { transform: rotate(180deg); }
+.promptTrigger svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.promptMenu { margin-top: 7px; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: 0 12px 32px rgba(0, 0, 0, .08); }
+.promptIntro { padding: 12px 14px; display: grid; gap: 2px; border-bottom: 1px solid var(--border); }
+.promptIntro strong { font-size: 13px; }
+.promptIntro span { color: var(--muted); font-size: 11px; }
+.aiOption { min-width: 0; padding: 11px 12px; display: grid; grid-template-columns: 32px minmax(72px, 1fr) auto; align-items: center; gap: 9px; border-bottom: 1px solid var(--border); }
+.aiOption:last-of-type { border-bottom: 0; }
+.aiOption > strong { font-size: 13px; }
+.aiLogo { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 7px; }
+.aiLogo svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
+.chatGptLogo { color: white; background: #111; }
+.claudeLogo { color: #c15f36; background: #f4e9df; }
+.aiActions { display: flex; justify-content: flex-end; gap: 6px; }
+.aiActions button { min-height: 32px; padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: 6px; color: var(--nav-text); background: var(--surface); font: 600 11px var(--font-sans); white-space: nowrap; cursor: pointer; }
+.aiActions button:last-child { color: white; border-color: var(--strong); background: var(--strong); }
+.aiActions button:disabled { opacity: .55; cursor: progress; }
+
 .actions { margin-top: auto; display: grid; grid-template-columns: minmax(160px, 1fr) auto; gap: 8px; }
 .primaryButton, .primaryLink, .secondaryButton, .previousButton { min-height: 42px; padding: 9px 14px; border-radius: 7px; font: 600 13px var(--font-sans); cursor: pointer; }
 .primaryButton, .primaryLink { border: 1px solid var(--strong); color: white; background: var(--strong); }
@@ -101,5 +120,7 @@
   .visual { min-height: 230px; padding: 12px; }
   .instructions { padding: 22px 18px; }
   .titleRow h2 { font-size: 30px; }
+  .aiOption { grid-template-columns: 32px minmax(0, 1fr); }
+  .aiActions { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
   .actions { grid-template-columns: 1fr auto; }
 }

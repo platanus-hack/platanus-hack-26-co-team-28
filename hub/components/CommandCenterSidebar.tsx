@@ -3,18 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { COMMAND_CENTER_ROUTES } from "@/lib/command-center-routes";
 
-const items = [
-  { href: "/command-center#overview", icon: "◉", label: "Overview" },
-  { href: "/command-center#requests", icon: "!", label: "Solicitudes" },
-  { href: "/setup", icon: "＋", label: "Preparar kit" },
-  { href: "/command-center#resources", icon: "R", label: "Recursos" },
-  { href: "/command-center#network", icon: "≋", label: "Red LoRa" },
-  { href: "/command-center#broadcasts", icon: "↗", label: "Broadcasts" },
-  { href: "/command-center#safe-people", icon: "✓", label: "Personas a salvo" },
-];
-
-export function CommandCenterSidebar({ connected = true, setup = false }: { connected?: boolean; setup?: boolean }) {
+export function CommandCenterSidebar({ connected = true }: { connected?: boolean }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -42,10 +33,8 @@ export function CommandCenterSidebar({ connected = true, setup = false }: { conn
       </div>
 
       <nav aria-label="Secciones del Centro">
-        {items.map((item) => {
-          const active = item.href === "/setup"
-            ? pathname === "/setup"
-            : pathname === "/command-center" && item.label === "Overview" && !setup;
+        {COMMAND_CENTER_ROUTES.map((item) => {
+          const active = pathname === item.href;
           return (
             <Link href={item.href} key={item.href} aria-current={active ? "page" : undefined} title={item.label}>
               <span className="nav-icon" aria-hidden="true">{item.icon}</span>
@@ -55,9 +44,16 @@ export function CommandCenterSidebar({ connected = true, setup = false }: { conn
         })}
       </nav>
 
+      <div className="sidebar-settings">
+        <Link href="/setup" title="Configuración">
+          <span className="nav-icon" aria-hidden="true">⚙</span>
+          <span className="nav-label">Configuración</span>
+        </Link>
+      </div>
+
       <div className="sidebar-footer">
         <span className={`status-dot ${connected ? "connected" : ""}`} aria-hidden="true" />
-        <span>{setup ? "Configuración guiada" : connected ? "Réplica conectada" : "Réplica sin conexión"}</span>
+        <span>{connected ? "Réplica conectada" : "Réplica sin conexión"}</span>
       </div>
     </aside>
   );

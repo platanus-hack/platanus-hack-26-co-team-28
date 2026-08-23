@@ -25,9 +25,17 @@ Variables requeridas:
 - `POST /api/sync`: ingesta autenticada por Bearer y confirmación por `event_id`.
 - `GET /api/health`: indica si el runtime está configurado.
 - `/`: acceso referencial sin autenticación; redirige al onboarding.
-- `/setup`: onboarding visual; inicia en simulación y no modifica dispositivos.
-- `/command-center`: réplica online de solo lectura, con mapa y refresco cada 15 segundos.
+- `/setup`: onboarding visual; inicia en simulación, no modifica dispositivos y permite copiar la guía para ChatGPT o Claude.
+- `/command-center`: overview de la réplica online, con mapa y refresco cada 15 segundos.
+- `/command-center/requests`: cola sincronizada de solicitudes con filtros.
+- `/command-center/resources`: disponibilidad, señal y última conexión de los nodos.
+- `/command-center/network`: trazabilidad de eventos entre la operación local y la réplica.
+- `/command-center/broadcasts`: seguimiento de broadcasts y confirmaciones; su envío sigue siendo local.
+- `/command-center/safe-people`: registros anonimizados y coordenadas aproximadas.
 - `GET /api/onboarding/voice?step=...`: narración española con Eleven Multilingual v2.
+
+El onboarding no forma parte del menú operacional. Desde `Configuración` se puede volver a abrir
+desde el paso 1 cuando sea necesario preparar otro kit.
 
 El endpoint acepta reintentos. Supabase aplica idempotencia mediante
 `woki_ingest_event`; una confirmación duplicada sigue siendo válida para vaciar la outbox local.
