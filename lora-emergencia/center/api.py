@@ -62,10 +62,13 @@ def optional_text(body, name, maximum, default=""):
 
 
 class CommandApi:
-    def __init__(self, store, gateway, demo=False, notify=None):
+    def __init__(self, store, gateway, demo=False, notify=None, sim=False):
         self.store = store
         self.gateway = gateway
         self.demo = demo
+        # sim: modo demo-con-hardware. Lee el gateway real (SOS del rescatista por
+        # LoRa) pero permite simular el operador de grua sin 3ra placa fisica.
+        self.sim = sim or demo
         self.notify = notify or (lambda: None)
 
     def _request(self, request_id):
@@ -121,7 +124,7 @@ class CommandApi:
         if parts == ["api", "v1", "broadcasts"]:
             return self.broadcast(body)
         if parts in (["api", "v1", "simulator", "frames"], ["api", "v1", "simulator", "scenarios"]):
-            if not self.demo:
+            if not self.sim:
                 raise ApiError(404, "not found")
             return self.simulate(parts[-1], body)
         raise ApiError(404, "not found")
@@ -214,7 +217,18 @@ class CommandApi:
         try:
             frame, _request = self.store.reserve_dispatch(request_id, resource, priority)
             reserved = True
-            delivered, result = self.gateway.send_reliable(frame) if self.gateway else (False, "GATEWAY_OFFLINE")
+            if self.sim:
+                # Operador simulado sin 3ra placa: transmite el DISP una vez para que
+                # se vea en el aire (OLED/feed), pero no exige el ACK de una placa que
+                # no existe. El operador respondera por la vista /grua (simulador).
+                if self.gateway:
+                    try:
+                        self.gateway.send_reliable(frame, attempts=1, timeout=0.3)
+                    except Exception:
+                        pass
+                delivered, result = True, "SIM_DELIVERED"
+            else:
+                delivered, result = self.gateway.send_reliable(frame) if self.gateway else (False, "GATEWAY_OFFLINE")
             if not delivered:
                 raise ApiError(503, result)
             self.store.mark_dispatched(request_id, resource, frame, actor, reason)

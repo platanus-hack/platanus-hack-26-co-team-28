@@ -2,6 +2,19 @@
 
 **Duración objetivo:** 3 minutos.
 **Setup:** 2 placas físicas (rescatista + centro) + operador de grúa simulado (`/grua`).
+
+> **Comando del centro para el demo (importante):**
+> ```bash
+> python3 center/center.py /dev/cu.usbserial-XXXX --sim
+> ```
+> El flag `--sim` lee el gateway **real** (SOS del rescatista por LoRa) **y** permite
+> simular al operador de grúa sin 3ra placa. Sin `--sim`, el despacho a la grúa falla
+> (espera el ACK de una placa que no existe).
+>
+> **Compatibilidad categoría↔recurso:** el centro solo despacha a un recurso del tipo
+> correcto. Para el guion del operador de grúa, el rescatista debe pedir **GRUA**. Si
+> pide RESCATE o MEDICO, despacha a un recurso de ese tipo (o ten esos recursos "en
+> servicio" en `/grua`).
 **Mensaje al jurado:** funciona **sin internet** (radio LoRa) **y** coordina como **Uber**
 (la solicitud llega al operador correcto y se acepta como un viaje).
 
@@ -74,11 +87,11 @@ los datos móviles**. El portal solo abre solo la primera vez que ve la red como
 
 ## 4. Checklist previo (antes de subir a tarima)
 
-- [ ] Rescatista (`43461`) flasheado con **`nodo_portal_https`** (hoy tiene `range_movil`; hay que reflashear).
+- [ ] Rescatista (`43461`) flasheado con **`nodo_portal_https`**. ✅ (ya está)
 - [ ] Centro (`68871`) flasheado con **`gateway_bidir`**. ✅ (ya está)
-- [ ] `credentials.h` presente en `nodo_portal_https/` para compilar el rescatista.
-- [ ] `center.py` corriendo, conectado al gateway. Dashboard en el proyector.
-- [ ] `/grua` abierto en el 2do dispositivo. Tocar **"Conectar mi grúa"** para entrar en servicio.
+- [ ] `center.py` corriendo con **`--sim`** conectado al gateway. Dashboard en el proyector.
+- [ ] `/grua` abierto en el 2do dispositivo (`http://<IP-laptop>:8080/grua`).
+- [ ] Los recursos que vas a usar aparecen "en servicio" en el dashboard (grúa, médico...).
 - [ ] Celular de prueba: red olvidada, datos móviles **apagados**, **ubicación encendida**.
 - [ ] Placas cargadas o con powerbank. Antenas enroscadas (nunca energizar sin antena).
 - [ ] Ensayo completo una vez, cronometrado.
