@@ -7,6 +7,7 @@ import { useState } from "react";
 import { ClaudeLogo } from "@/components/logos/claude";
 import { OpenAILogo } from "@/components/logos/openai";
 import type { OnboardingGuide, OnboardingStepId } from "@/lib/onboarding";
+import { copyPromptThenMaybeOpen } from "@/lib/prompt-actions";
 
 import styles from "./setup.module.css";
 
@@ -61,22 +62,25 @@ function AiPromptMenu({
 
   async function copyPrompt(provider: AiProvider, openAfterCopy = false) {
     const destination = AI_DESTINATIONS[provider];
-    const openedWindow = openAfterCopy ? window.open("about:blank", "_blank") : null;
-    if (openedWindow) openedWindow.opener = null;
     setCopyTarget(provider);
     setCopyState("copying");
     try {
       const response = await fetch(promptFile);
       if (!response.ok) throw new Error("prompt-unavailable");
-      await navigator.clipboard.writeText(await response.text());
+      await copyPromptThenMaybeOpen({
+        destinationUrl: destination.url,
+        openAfterCopy,
+        prompt: await response.text(),
+        dependencies: {
+          writeText: (text) => navigator.clipboard.writeText(text),
+          openDestination: (url) => {
+            window.open(url, "_blank", "noopener,noreferrer");
+          },
+        },
+      });
       setCopyState("success");
-      if (openAfterCopy) {
-        if (openedWindow) openedWindow.location.href = destination.url;
-        else window.open(destination.url, "_blank", "noopener,noreferrer");
-      }
     } catch {
       setCopyState("error");
-      if (openedWindow) openedWindow.location.href = destination.url;
     }
   }
 

@@ -101,6 +101,7 @@ describe("onboarding del nodo de recurso", () => {
     expect(prompt).toContain("https://woki-hub.vercel.app/api/sync");
     expect(prompt).toContain("https://woki-lora-enclosures.vercel.app");
     expect(prompt).toContain("Nunca energices");
+    expect(prompt).toContain("Responde siempre en español");
     expect(prompt).toContain("WOKI_SYNC_TOKEN");
     expect(prompt).not.toContain("sk-ant-");
     expect(prompt).not.toContain("sbp_");
@@ -124,6 +125,7 @@ describe("onboarding del nodo de recurso", () => {
     expect(prompt).toContain("TTGO LoRa32 T3 V1.6.1, banda 915 MHz");
     expect(prompt).toContain("SMA estándar");
     expect(prompt).toContain("PCM/BMS");
+    expect(prompt).toContain("Responde siempre en español");
     expect(prompt).not.toContain("sk-ant-");
     expect(prompt).not.toContain("sbp_");
   });

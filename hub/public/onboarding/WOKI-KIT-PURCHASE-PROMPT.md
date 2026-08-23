@@ -4,6 +4,9 @@ Ayúdame a comprar el kit WOKI cerca de mi ubicación. Debes investigar en la we
 comparar disponibilidad y precios actuales, y devolver una recomendación verificable. No inventes
 productos, tiendas, stock, precios, distancias ni URLs.
 
+Responde siempre en español. Conserva los nombres comerciales originales de productos y tiendas
+cuando sea necesario para encontrarlos.
+
 Repositorio y fuentes técnicas:
 
 - <https://github.com/platanus-hack/platanus-hack-26-co-team-28>
