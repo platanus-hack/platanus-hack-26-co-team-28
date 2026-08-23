@@ -53,6 +53,7 @@ main { max-width: 1500px; padding: 24px; margin: 0 auto; }
 .page-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .page-head h2 { font-size: 26px; margin: 0; letter-spacing: -.025em; }
 .page-head p { color: var(--muted); margin: 4px 0 0; }
+.page-head-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--surface); margin-bottom: 16px; }
 .metric { padding: 20px; border-right: 1px solid var(--border); }
 .metric:last-child { border-right: 0; }

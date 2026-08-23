@@ -138,7 +138,7 @@ async function renderOverview() {
   const metrics = data.metrics;
   if (!document.querySelector("#overview-view")) content.innerHTML = `
     <div id="overview-view">
-    <div class="page-head"><div><h2>Situación operacional</h2><p>Decisiones pendientes y estado observado de la red.</p></div><span id="overview-gateway" class="badge ${data.gateway ? "success" : "warning"}">${data.gateway ? "Gateway conectado" : "Sin radio"}</span></div>
+    <div class="page-head"><div><h2>Situación operacional</h2><p>Decisiones pendientes y estado observado de la red.</p></div><div class="page-head-actions"><span id="overview-safe-latest">${latestSafeBadge(data.safe_people)}</span><span id="overview-gateway" class="badge ${data.gateway ? "success" : "warning"}">${data.gateway ? "Gateway conectado" : "Sin radio"}</span></div></div>
     <section id="overview-metrics" class="metrics" aria-label="Métricas accionables">
       ${metric(metrics.critical, "Solicitudes críticas")}${metric(metrics.pending, "Decisiones pendientes")}${metric(metrics.available_resources, "Recursos disponibles")}${metric(metrics.open_requests, "Solicitudes abiertas")}
     </section>
@@ -160,14 +160,17 @@ async function renderOverview() {
       </section>
       <section class="panel"><div class="panel-head"><h3>Cola priorizada</h3><a class="button" href="#requests">Ver todas</a></div><div id="overview-queue" class="list">${overviewQueue(data.requests)}</div></section>
     </div>
+    <section class="panel" style="margin-top:16px"><div class="panel-head"><h3>Personas a salvo recientes</h3><a class="button" href="#safe-people">Ver todas</a></div><div id="overview-safe">${safeOverviewList(data.safe_people)}</div></section>
     <section class="panel" style="margin-top:16px"><div class="panel-head"><h3>Actividad reciente de radio</h3><a class="button" href="#network">Abrir red</a></div><div id="overview-radio">${radioTable(data.recent_activity)}</div></section>
     </div>`;
   document.querySelector("#overview-metrics").innerHTML = `${metric(metrics.critical, "Solicitudes críticas")}${metric(metrics.pending, "Decisiones pendientes")}${metric(metrics.available_resources, "Recursos disponibles")}${metric(metrics.open_requests, "Solicitudes abiertas")}`;
   const gatewayBadge = document.querySelector("#overview-gateway");
   gatewayBadge.className = `badge ${data.gateway ? "success" : "warning"}`;
   gatewayBadge.textContent = data.gateway ? "Gateway conectado" : "Sin radio";
+  document.querySelector("#overview-safe-latest").innerHTML = latestSafeBadge(data.safe_people);
   document.querySelector("#map-positions-note").textContent = mapPositionsNote(data);
   document.querySelector("#overview-queue").innerHTML = overviewQueue(data.requests);
+  document.querySelector("#overview-safe").innerHTML = safeOverviewList(data.safe_people);
   document.querySelector("#overview-radio").innerHTML = radioTable(data.recent_activity);
   document.querySelector("#locate-center").onclick = locateCenter;
   document.querySelector("#manual-center").onclick = enterCenterPosition;
@@ -177,6 +180,18 @@ async function renderOverview() {
 
 function mapPositionsNote(data) { return `${centerPositionLabel(data.center_position)}${data.resources_truncated ? ` · mostrando 200 de ${data.resources_total} recursos` : ""}`; }
 function overviewQueue(requests) { return requests.length ? requests.slice(0, 7).map(requestListItem).join("") : empty("Sin solicitudes abiertas"); }
+function latestSafeBadge(items) {
+  if (!items?.length) return "";
+  const person = items[0];
+  return `<span class="badge success">✓ ${escapeHtml(person.name)} a salvo · ${ago(person.created_at)}</span>`;
+}
+function safeOverviewList(items) {
+  if (!items?.length) return empty("Nadie se ha reportado a salvo todavía");
+  return `<div class="list">${items.slice(0, 5).map((item) => {
+    const location = validCoordinate(item.lat, item.lon) ? `${item.lat}, ${item.lon}` : (item.place || "Sin ubicación");
+    return `<div class="list-item"><div class="list-line"><strong>${escapeHtml(item.name)}</strong><span class="badge success">A salvo</span><span class="mono">${escapeHtml(item.document)}</span></div><div class="cell-sub">${escapeHtml(location)} · nodo ${escapeHtml(item.node)} · ${ago(item.created_at)}</div></div>`;
+  }).join("")}</div>`;
+}
 
 function centerPositionLabel(position) {
   if (!position) return "Centro sin ubicación · posiciones observadas";

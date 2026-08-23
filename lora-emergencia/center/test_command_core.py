@@ -47,6 +47,14 @@ class CenterStoreTests(unittest.TestCase):
         self.assertEqual(self.add_sos(), "DUPLICATE")
         self.assertEqual(len(self.store.state()["requests"]), 1)
 
+    def test_radio_event_records_domain_result(self):
+        self.assertEqual(self.add_sos(), "CREATED")
+        self.assertEqual(self.add_sos(), "DUPLICATE")
+
+        events = self.store.list_radio_events(limit=2)
+
+        self.assertEqual([event["result"] for event in events], ["DUPLICATE", "CREATED"])
+
     def test_request_ids_do_not_collide_between_nodes(self):
         self.add_sos()
         other = RadioFrame.parse("CIVIL2|CENTRO|SOS|7|RESCATE|0|4.2|-74.2|-|atrapado")

@@ -141,6 +141,7 @@ class CommandApi:
             self.store.list_requests(limit=None, open_only=True), self.store.list_resources()
         )
         radio = self.store.list_radio_events(limit=15)
+        safe_people = self.store.list_safe_people(limit=10)
         return {
             "gateway": bool(self.gateway and self.gateway.connected),
             "center_position": self.store.get_center_position(),
@@ -152,6 +153,7 @@ class CommandApi:
                 "open_requests": len(open_requests),
             },
             "requests": open_requests[:20],
+            "safe_people": safe_people,
             "resources": resources,
             "resources_total": resource_counts["total"],
             "resources_truncated": resource_counts["total"] > len(resources),

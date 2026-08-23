@@ -59,6 +59,19 @@ class ApiTests(unittest.TestCase):
         self.assertIn("metrics", overview)
         self.assertIsNone(overview["center_position"])
         self.assertEqual(overview["requests"][0]["id"], request_id)
+        self.assertIn("safe_people", overview)
+
+    def test_overview_includes_recent_safe_people_details(self):
+        self.store.ingest(RadioFrame.parse(
+            "CIVIL2|CENTRO|OK|8|Jhomar|CC7435|4.65|-74.10|Portal norte"
+        ), "-62", "9")
+
+        person = self.api.overview()["safe_people"][0]
+
+        self.assertEqual(person["name"], "Jhomar")
+        self.assertEqual(person["document"], "CC7435")
+        self.assertEqual(person["lat"], "4.65")
+        self.assertEqual(person["place"], "Portal norte")
 
     def test_overview_exposes_configured_center_position(self):
         position = {

@@ -229,7 +229,6 @@ class CenterStore:
             )
 
     def ingest(self, frame: RadioFrame, rssi: str = "", snr: str = "") -> str:
-        self.record_event("IN", frame, frame.encode())
         handlers = {
             "SOS": self._ingest_sos,
             "OK": self._ingest_safe,
@@ -240,7 +239,9 @@ class CenterStore:
             "BCA": self._ingest_broadcast_ack,
         }
         handler = handlers.get(frame.kind)
-        return handler(frame, rssi, snr) if handler else "IGNORED"
+        result = handler(frame, rssi, snr) if handler else "IGNORED"
+        self.record_event("IN", frame, frame.encode(), result)
+        return result
 
     def _ingest_sos(self, frame: RadioFrame, rssi: str, snr: str) -> str:
         if len(frame.payload) < 6:
