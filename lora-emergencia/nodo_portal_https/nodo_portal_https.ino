@@ -506,15 +506,15 @@ String pageConfirm(String tipo, bool ok) {
   // texto mientras se espera.
   h += "var PASOS=[['Recibida','el puesto de mando recibió tu solicitud','esperando confirmación por radio'],";
   h += "['En proceso','un operador está gestionando tu caso','esperando que un operador lo tome'],";
-  h += "['Unidad asignada','ya hay una unidad a cargo de tu caso','buscando la unidad más cercana'],";
+  h += "['Unidad asignada','ya hay una unidad a cargo de tu caso','esperando que la unidad confirme'],";
   h += "['En camino','la unidad va hacia ti','la unidad todavía no sale'],";
   h += "['Resuelto','te atendieron','la unidad todavía no termina']];";
   // Cuantos pasos SE CUMPLIERON ya (0 a 5).
   h += "function nivelDe(e){e=(e||'').toUpperCase();";
   h += "if(e==='RESUELTA')return 5;";
   h += "if(e.indexOf('CAMINO')>=0||e==='EN_CURSO'||e==='ENLUGAR')return 4;";
-  h += "if(e.indexOf('ASIGNADA')>=0||e==='DESPACHADA'||e==='ACEPTADA')return 3;";
-  h += "if(e.indexOf('GESTION')>=0||e==='EN_REVISION')return 2;";
+  h += "if(e.indexOf('ASIGNADA')>=0||e==='ACEPTADA')return 3;";
+  h += "if(e.indexOf('GESTION')>=0||e.indexOf('ESPERANDO')>=0||e==='EN_REVISION'||e==='DESPACHADA'||e==='ENVIANDO'||e==='ENVIO_INDETERMINADO')return 2;";
   h += "return 1;}";
   h += "function esCancelada(e){return (e||'').toUpperCase().indexOf('CANCEL')>=0;}";
   h += "var CHECK=\"<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3'><path d='M20 6 9 17l-5-5'/></svg>\";";

@@ -449,7 +449,7 @@ var seguimiento=null, horaEnvio='';
 var PASOS=[
   {t:'Recibida',        d:'el puesto de mando recibió tu solicitud', e:'esperando confirmación por radio'},
   {t:'En proceso',      d:'un operador está gestionando tu caso',    e:'esperando que un operador lo tome'},
-  {t:'Unidad asignada', d:'ya hay una unidad a cargo de tu caso',    e:'buscando la unidad más cercana'},
+  {t:'Unidad asignada', d:'ya hay una unidad a cargo de tu caso',    e:'esperando que la unidad confirme'},
   {t:'En camino',       d:'la unidad va hacia ti',                   e:'la unidad todavía no sale'},
   {t:'Resuelto',        d:'te atendieron',                           e:'la unidad todavía no termina'}
 ];
@@ -463,8 +463,8 @@ function nivelDeEstado(est){
   est=(est||'').toUpperCase();
   if(est==='RESUELTA') return 5;
   if(est.indexOf('CAMINO')>=0||est==='EN_CURSO'||est==='ENLUGAR') return 4;
-  if(est.indexOf('ASIGNADA')>=0||est==='DESPACHADA'||est==='ACEPTADA') return 3;
-  if(est.indexOf('GESTION')>=0||est==='EN_REVISION') return 2;
+  if(est.indexOf('ASIGNADA')>=0||est==='ACEPTADA') return 3;
+  if(est.indexOf('GESTION')>=0||est.indexOf('ESPERANDO')>=0||est==='EN_REVISION'||est==='DESPACHADA'||est==='ENVIANDO'||est==='ENVIO_INDETERMINADO') return 2;
   return 1; // RECIBIDA / PENDIENTE / sin dato
 }
 function esCancelada(est){ return (est||'').toUpperCase().indexOf('CANCEL')>=0; }

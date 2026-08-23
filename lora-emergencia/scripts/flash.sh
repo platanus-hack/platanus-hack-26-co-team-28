@@ -16,6 +16,15 @@ if [ ! -d "$REPO/$SKETCH" ]; then
   exit 1
 fi
 
+# El portal HTTPS se escribe en portal_preview.html y se compila desde
+# portal_page.h. Si se flashea sin regenerar, la placa sirve una version vieja
+# de la pagina de Android mientras la de iPhone (que vive en el .ino) ya trae
+# los cambios. Las 2 pantallas quedan desalineadas sin que nadie lo note.
+if [ "$SKETCH" = "nodo_portal_https" ]; then
+  echo ">> Regenerando portal_page.h desde portal_preview.html ..."
+  bash "$REPO/scripts/gen_portal.sh"
+fi
+
 echo ">> Compilando y subiendo '$SKETCH' a $PORT ..."
 arduino-cli compile --upload -p "$PORT" --fqbn "$FQBN" "$REPO/$SKETCH"
 echo ">> Listo."

@@ -198,7 +198,7 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(notif, "no se transmitio la notificacion ST al rescatista")
         self.assertEqual(notif[-1].origin, "CENTRO")
         # El estado viaja traducido a la etiqueta que ve el ciudadano.
-        self.assertEqual(notif[-1].payload, ("7", "UNIDAD ASIGNADA"))
+        self.assertEqual(notif[-1].payload, ("7", "ESPERANDO UNIDAD"))
 
     def test_operator_action_notifies_citizen_over_radio(self):
         # En modo sim, la grua responde ACC por el simulador. El centro debe

@@ -128,7 +128,10 @@ def main():
     stop.set(); time.sleep(0.3); ser.close()
 
     print("\n" + AZUL + "===== RESULTADO =====" + FIN)
-    esperados = ["RECIBIDA", "EN GESTION", "GRUA ASIGNADA", "GRUA EN CAMINO", "RESUELTA"]
+    # Los textos salen de CITIZEN_STATUS en center/api.py. Si se tocan alli,
+    # hay que tocarlos aqui: este validador se quedo con los viejos ("GRUA
+    # ASIGNADA", "GRUA EN CAMINO") y habria dado FAIL sobre hardware bueno.
+    esperados = ["RECIBIDA", "EN GESTION", "ESPERANDO UNIDAD", "UNIDAD ASIGNADA", "EN CAMINO", "RESUELTA"]
     faltan = [e for e in esperados if e not in recibidos]
     for e in esperados:
         ok = e in recibidos

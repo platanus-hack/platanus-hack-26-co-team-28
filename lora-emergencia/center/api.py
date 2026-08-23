@@ -24,10 +24,16 @@ RESOURCE_STATES = {"disponible", "reservado", "asignado", "enruta", "enlugar", "
 #
 # Tampoco decimos "GRUA" para todo: a una solicitud medica la atiende una
 # ambulancia, y llamarla grua es falso. El texto es neutro: "UNIDAD".
+#
+# ENVIANDO y ENVIO_INDETERMINADO no tenian entrada, asi que el codigo interno
+# viajaba crudo hasta la pantalla y la OLED del ciudadano. Ver
+# "ENVIO_INDETERMINADO" no le dice nada a alguien asustado.
 CITIZEN_STATUS = {
     "PENDIENTE": "RECIBIDA",
     "EN_REVISION": "EN GESTION",
-    "DESPACHADA": "UNIDAD ASIGNADA",
+    "ENVIANDO": "ESPERANDO UNIDAD",
+    "ENVIO_INDETERMINADO": "ESPERANDO UNIDAD",
+    "DESPACHADA": "ESPERANDO UNIDAD",
     "ACEPTADA": "UNIDAD ASIGNADA",
     "EN_CURSO": "EN CAMINO",
     "RESUELTA": "RESUELTA",
