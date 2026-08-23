@@ -430,6 +430,13 @@ class HttpSafetyTests(unittest.TestCase):
         theme_update = app.index('shortbreadColors = theme === "dark"')
         self.assertLess(theme_update, app.index("hybridMap.localLayer?.redraw()", theme_update))
 
+    def test_desktop_sidebar_stays_sticky_while_document_scrolls(self):
+        styles = (center.WEB_ROOT / "styles.css").read_text(encoding="utf-8")
+
+        self.assertIn(".app-shell {", styles)
+        self.assertIn("overflow-x: clip", styles)
+        self.assertIn(".sidebar { position: sticky; top: 0; height: 100vh", styles)
+
     def test_leaflet_assets_negotiate_precompressed_gzip_with_representation_etags(self):
         path = "/vendor/leaflet-1.9.4.js"
         self.connection.request("GET", path)
