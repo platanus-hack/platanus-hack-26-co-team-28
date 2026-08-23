@@ -99,6 +99,30 @@ const simuladoBadge = (node) => esRecursoSimulado(node) ? ` <span class="badge" 
 const RESOURCE_MAX_AGE_SECONDS = 600;
 const sinContacto = (item) => ageSeconds(item.last_seen) > RESOURCE_MAX_AGE_SECONDS;
 const sinContactoBadge = (item) => sinContacto(item) ? ` <span class="badge warning" title="Sin contacto hace más de 10 minutos: el triage no lo propone para despacho">Sin contacto</span>` : "";
+// Frases listas para el campo Motivo. Bajo presión, redactar una justificación
+// cuesta tiempo y el motivo es obligatorio para registrar la acción. El
+// operador toca una frase y ya; siempre puede editarla o escribir la suya.
+const MOTIVOS_DESPACHO = {
+  MEDICO: ["Unidad médica más cercana", "Paciente crítico, traslado inmediato", "Requiere atención en sitio"],
+  RESCATE: ["Equipo de rescate más cercano", "Personas atrapadas confirmadas", "Requiere maquinaria pesada"],
+  FUEGO: ["Unidad de bomberos más cercana", "Riesgo de propagación", "Personas dentro del inmueble"],
+  AGUA: ["Unidad de agua más cercana", "Zona sin agua potable", "Hay menores y adultos mayores"],
+  GRUA: ["Grúa más cercana", "Vía bloqueada de alto tránsito", "Obstruye paso de emergencia"],
+};
+// Aplican a cualquier categoría.
+const MOTIVOS_DESPACHO_COMUNES = ["Única unidad compatible disponible"];
+// Las acciones humanas se justifican por lo que se hace, no por la categoría.
+const MOTIVOS_ACCION = {
+  review: ["Inicio gestión del caso", "Verificando datos con quien reportó"],
+  cancel: ["Reporte duplicado", "Falsa alarma confirmada", "Quien reportó ya no requiere ayuda"],
+  resolve: ["Atención completada en sitio", "Persona trasladada a centro asistencial", "Situación controlada"],
+  release: ["La unidad no confirmó recepción", "Se reasigna a otra unidad"],
+};
+// Chips que rellenan un textarea al tocarlos. `target` es el id del textarea.
+function chipsMotivo(frases, target) {
+  if (!frases.length) return "";
+  return `<div class="motivo-chips" data-target="${target}">${frases.map((frase) => `<button type="button" class="motivo-chip" data-frase="${escapeHtml(frase)}">${escapeHtml(frase)}</button>`).join("")}</div>`;
+}
 // El chip del despacho cambia segun el recurso elegido en el desplegable, y
 // muestra a la persona a cargo de ESA unidad: es quien va a recibir la
 // asignacion y aceptarla desde su vista de operador.
@@ -624,10 +648,18 @@ function configureMarkerElement(marker) {
   });
 }
 
+// Una solicitud PENDIENTE es la que nadie ha tocado todavía: ni el centro la
+// tomó, ni hay unidad en camino. Es lo único que exige una decisión ahora.
+const sinResponder = (item) => item.mapType === "request" && !item.resource_node && String(item.state || "").toUpperCase() === "PENDIENTE";
+
 function markerIcon(item, animateCritical, animateFresh = false) {
   const classes = ["operational-marker", item.mapType, markerFreshness(item)];
   if (item.coverageFlag) classes.push(`coverage-${item.coverageFlag}`);
-  if (animateCritical && item.mapType === "request" && (item.triage?.priority ?? item.priority) === 0 && ageSeconds(item.created_at) < 600) classes.push("critical-new");
+  // Late sin parar mientras nadie responda, y se apaga sola al tomar el caso.
+  // El pulso de 3 golpes de critical-new se apagaba a los 2 s y la solicitud
+  // se perdía entre los círculos de los recursos.
+  if (sinResponder(item)) classes.push("sin-responder");
+  else if (animateCritical && item.mapType === "request" && (item.triage?.priority ?? item.priority) === 0 && ageSeconds(item.created_at) < 600) classes.push("critical-new");
   if (animateFresh && item.mapType === "resource" && markerFreshness(item) === "fresh") classes.push("fresh-animate");
   return window.L.divIcon({ className: classes.join(" "), html: "<span></span>", iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -22] });
 }
@@ -787,6 +819,15 @@ function requestsTable(items) {
 document.addEventListener("click", (event) => {
   const row = event.target.closest(".coverage-row");
   if (row) openRequest(Number(row.dataset.requestId));
+  // Frase lista para el motivo: la escribe en el textarea y marca cuál se usó.
+  // Delegación en document porque los chips se re-generan al cambiar la acción.
+  const chip = event.target.closest(".motivo-chip");
+  if (chip) {
+    const grupo = chip.closest(".motivo-chips");
+    const campo = document.querySelector(`#${grupo.dataset.target}`);
+    if (campo) { campo.value = chip.dataset.frase; campo.focus(); }
+    grupo.querySelectorAll(".motivo-chip").forEach((otro) => otro.classList.toggle("sel", otro === chip));
+  }
 });
 function bindRequestRows() {
   document.querySelectorAll(".request-row").forEach((row) => {
@@ -816,6 +857,11 @@ async function openRequest(id) {
     document.querySelector("#resource-node")?.addEventListener("change", (event) => {
       document.querySelector("#dispatch-operador").innerHTML = chipOperadorParaRecurso(event.target.value);
     });
+    // Las frases del motivo dependen de la accion elegida: cancelar y resolver
+    // se justifican distinto.
+    document.querySelector("#action")?.addEventListener("change", (event) => {
+      document.querySelector("#action-motivos").innerHTML = chipsMotivo(MOTIVOS_ACCION[event.target.value] || [], "action-reason");
+    });
     drawer.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
     scrim.hidden = false;
@@ -831,7 +877,7 @@ function dispatchForm(request, candidates, suggested) {
     const sufijo = esRecursoSimulado(c.node) ? " · simulado" : "";
     return `<option value="${escapeHtml(c.node)}"${selected}>${escapeHtml(c.node)} · ${escapeHtml(dist)}${sufijo}</option>`;
   }).join("");
-  return `<section class="detail-section"><h3>Solicitar grúa</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">Grúa disponible y compatible</label><select id="resource-node" name="resource_node" required>${options}</select></div><div id="dispatch-operador">${chipOperadorParaRecurso(suggested)}</div><div class="field"><label for="dispatch-reason">Motivo</label><textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Solicitar a la grúa</button></div></form></section>`;
+  return `<section class="detail-section"><h3>Solicitar grúa</h3><form id="dispatch-form" data-request-id="${request.id}" class="review"><div class="field"><label for="resource-node">Grúa disponible y compatible</label><select id="resource-node" name="resource_node" required>${options}</select></div><div id="dispatch-operador">${chipOperadorParaRecurso(suggested)}</div><div class="field"><label for="dispatch-reason">Motivo</label>${chipsMotivo([...(MOTIVOS_DESPACHO[request.category] || []), ...MOTIVOS_DESPACHO_COMUNES], "dispatch-reason")}<textarea id="dispatch-reason" name="reason" maxlength="240" placeholder="Justificación operacional"></textarea></div><label class="list-line" style="margin-top:10px"><input name="confirmed" type="checkbox" required style="width:20px;min-height:20px"> Confirmo que revisé solicitud, prioridad y recurso.</label><div class="form-actions"><button class="button action" type="submit">Solicitar a la grúa</button></div></form></section>`;
 }
 function humanActions(request) {
   const actions = [];
@@ -840,7 +886,7 @@ function humanActions(request) {
   if (["PENDIENTE", "EN_REVISION"].includes(request.state) && !request.resource_node) actions.push(["cancel", "Cancelar"]);
   if (["ACEPTADA", "EN_CURSO"].includes(request.state)) actions.push(["resolve", "Resolver"]);
   if (!actions.length) return "";
-  return `<section class="detail-section"><h3>Acción humana</h3><form id="action-form" data-request-id="${request.id}" class="review"><div class="field"><label for="action">Acción</label><select id="action" name="action">${actions.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div>${operadorTag("Operador de centro", OPERADOR_CENTRO, "Puesto de mando")}<div class="field"><label for="action-reason">Motivo obligatorio</label><textarea id="action-reason" name="reason" required minlength="3" maxlength="240"></textarea></div><div class="form-actions"><button class="button" type="submit">Registrar acción</button></div></form></section>`;
+  return `<section class="detail-section"><h3>Acción humana</h3><form id="action-form" data-request-id="${request.id}" class="review"><div class="field"><label for="action">Acción</label><select id="action" name="action">${actions.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select></div>${operadorTag("Operador de centro", OPERADOR_CENTRO, "Puesto de mando")}<div class="field"><label for="action-reason">Motivo obligatorio</label><div id="action-motivos">${chipsMotivo(MOTIVOS_ACCION[actions[0][0]] || [], "action-reason")}</div><textarea id="action-reason" name="reason" required minlength="3" maxlength="240"></textarea></div><div class="form-actions"><button class="button" type="submit">Registrar acción</button></div></form></section>`;
 }
 async function submitDispatch(event) {
   event.preventDefault();
