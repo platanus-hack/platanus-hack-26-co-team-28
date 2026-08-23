@@ -270,7 +270,7 @@ class CommandApi:
                 "CENTRO", node, "ST", self.store.next_message_id(),
                 (str(request_seq), str(estado_ciudadano)),
             )
-            self.gateway.send_broadcast(frame)
+            self.gateway.send_broadcast(frame, repeats=5)
         except Exception:
             pass
 

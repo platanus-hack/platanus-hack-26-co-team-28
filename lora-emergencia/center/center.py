@@ -38,6 +38,7 @@ STATIC_FILES = {
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/theme.js": ("theme.js", "text/javascript; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/grua.js": ("grua.js", "text/javascript; charset=utf-8"),
     "/vendor/leaflet-1.9.4.css": ("vendor/leaflet.css", "text/css; charset=utf-8"),
     "/vendor/leaflet-1.9.4.js": ("vendor/leaflet.js", "text/javascript; charset=utf-8"),
     "/vendor/leaflet-vectorgrid-1.3.0.js": ("vendor/leaflet-vectorgrid.js", "text/javascript; charset=utf-8"),
@@ -522,6 +523,21 @@ def validate_network_config(host, api_token):
         raise ValueError("--api-token es obligatorio al usar un host no loopback")
 
 
+def status_rebroadcast_loop(interval=15):
+    # Reenvia periodicamente el estado de las solicitudes activas al rescatista.
+    # Los avisos ST son best-effort por radio; si uno se pierde, este latido lo
+    # recupera en <= interval segundos (el portal consulta /status cada 4 s).
+    while True:
+        time.sleep(interval)
+        try:
+            if not (GATEWAY and getattr(GATEWAY, "connected", False) and API):
+                continue
+            for request in STORE.list_requests(open_only=True, limit=20):
+                API._notify_citizen(request)
+        except Exception:
+            pass
+
+
 def main():
     global STORE, GATEWAY, API, DEMO, API_TOKEN
     parser = argparse.ArgumentParser()
@@ -564,6 +580,10 @@ def main():
         STORE, GATEWAY, args.demo, notify_change, sim=args.sim,
         center_position=center_position,
     )
+
+    # Hilo que reenvia el estado a los rescatistas por radio (recupera avisos perdidos).
+    if args.serial and not args.demo:
+        threading.Thread(target=status_rebroadcast_loop, daemon=True).start()
 
     server = CommandServer((args.host, args.port), Handler)
     print("Command center en http://{}:{} (Ctrl+C para salir)".format(args.host, args.port))

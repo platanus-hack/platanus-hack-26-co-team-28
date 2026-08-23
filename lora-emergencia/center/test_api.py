@@ -23,7 +23,7 @@ class FakeGateway:
         self.frames.append(frame)
         return True, "DELIVERED"
 
-    def send_broadcast(self, frame):
+    def send_broadcast(self, frame, repeats=3):
         self.frames.append(frame)
         return True
 

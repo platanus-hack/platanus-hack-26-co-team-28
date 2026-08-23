@@ -3,95 +3,68 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Grua GRUA07</title>
+  <title>Operador de grúa · GRUA07</title>
   <style>
-    *{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif;background:#0b0f14;color:#e7e9ee}.hd{background:#1570ef;padding:16px;text-align:center}.hd h1{margin:0;font-size:20px}.hd .st{font-size:13px;opacity:.9;margin-top:4px}.wrap{max-width:520px;margin:0 auto;padding:14px}.conn{width:100%;padding:14px;border:0;border-radius:12px;background:#067647;color:#fff;font-size:17px;font-weight:700;margin-bottom:12px}.card{background:#141a22;border:1px solid #232c39;border-radius:14px;padding:16px;margin-bottom:12px}.cat{font-size:18px;font-weight:800}.p0{color:#ff6b6b}.p1{color:#ffb454}.meta{color:#8a93a3;font-size:13px;margin:6px 0}.loc{font-size:14px;margin:6px 0}.state{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:#232c39}.btn{width:100%;padding:15px;border:0;border-radius:12px;font-size:17px;font-weight:700;color:#fff;margin-top:10px}.accept{background:#067647}.route{background:#1570ef}.place{background:#7c3aed}.resolve{background:#b45309}.empty{color:#8a93a3;text-align:center;padding:30px}.error{color:#ff8a8a;text-align:center;margin-bottom:12px}
+  /* Mismo sistema de diseño que el portal del rescatista: dark, tokens de
+     seguridad, toques >=44px (WCAG 2.5.5), contraste alto. El operador ve el
+     PROTOCOLO (ACC/ST); el ciudadano ve texto simple. */
+  :root{
+    --bg:#0C0C0D; --surface:#161719; --surface2:#212327; --border:#2E3033;
+    --text:#F1F3F4; --muted:#9AA0A6;
+    --danger:#FF4438; --warn:#FF8A00; --caution:#FFC400; --safe:#2FBF71; --notice:#4C9AFF;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  .app{max-width:440px;margin:0 auto;min-height:100vh;min-height:100dvh;
+    padding:calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+    display:flex;flex-direction:column}
+  .hd{background:var(--notice);color:#04162e;padding:14px 16px;border-radius:14px;display:flex;align-items:center;gap:12px}
+  .hd .ic{width:34px;height:34px;flex:none}
+  .hd h1{margin:0;font-size:18px;font-weight:800;letter-spacing:-.01em}
+  .hd .sub{font-size:12.5px;font-weight:600;opacity:.85;margin-top:1px;display:flex;align-items:center;gap:6px}
+  .dot{width:9px;height:9px;border-radius:50%;background:#04162e;opacity:.5;display:inline-block}
+  .dot.ok{background:#065f36;opacity:1}
+  .btn{border:none;width:100%;min-height:56px;padding:15px;border-radius:14px;cursor:pointer;font-weight:700;font-size:16px;color:#fff;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn:active{transform:scale(.98)}
+  .btn.conn{background:var(--safe);color:#05130b;min-height:60px;font-size:18px;margin-top:16px}
+  .btn.salir{background:var(--surface);color:var(--muted);border:1.5px solid var(--border);min-height:52px;font-size:15px;margin-top:16px}
+  .btn.accept{background:var(--safe);color:#05130b}
+  .btn.route{background:var(--notice);color:#04162e}
+  .btn.place{background:var(--surface2);color:var(--text);border:1.5px solid var(--border)}
+  .btn.resolve{background:var(--warn);color:#180d00}
+  .error{color:var(--danger);text-align:center;font-size:14px;margin-top:12px;min-height:0}
+  .error:empty{display:none}
+  .list{margin-top:14px;display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:16px}
+  .cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .cat{font-size:18px;font-weight:800;letter-spacing:-.01em}
+  .pill{font-size:12px;font-weight:800;padding:4px 11px;border-radius:20px;background:var(--surface2);color:var(--muted);white-space:nowrap}
+  .pill.p0{background:color-mix(in srgb,var(--danger) 20%,var(--surface));color:var(--danger)}
+  .pill.p1{background:color-mix(in srgb,var(--warn) 22%,var(--surface));color:var(--warn)}
+  .loc{display:flex;align-items:flex-start;gap:8px;font-size:14.5px;margin:12px 0 4px}
+  .loc svg{width:18px;height:18px;flex:none;margin-top:2px;color:var(--notice)}
+  .loc a.maplink{color:var(--notice);font-weight:700}
+  .meta{font-size:13.5px;color:var(--text);margin:6px 0 2px}
+  .meta .muted{color:var(--muted)}
+  .state{display:inline-block;font-size:11.5px;font-weight:800;letter-spacing:.04em;padding:4px 11px;border-radius:20px;background:var(--surface2);color:var(--muted);margin:8px 0 2px;font-family:ui-monospace,Menlo,monospace}
+  .empty{color:var(--muted);text-align:center;padding:34px 10px;background:var(--surface);border:1.5px dashed var(--border);border-radius:16px;margin-top:14px}
+  .spacer{flex:1}
+  .foot{color:var(--muted);font-size:11.5px;text-align:center;margin-top:18px}
   </style>
 </head>
 <body>
-  <div class="hd"><h1>App del operador · GRUA07</h1><div class="st" id="status">desconectado</div></div>
-  <main class="wrap">
-    <button class="conn" id="connect" type="button">Conectar mi grua</button>
+  <div class="app">
+    <div class="hd">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 17h13v-4l4 1v3h1M5 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM16 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM3 13V8h7l3 3"/></svg>
+      <div><h1>Operador de grúa · GRUA07</h1><div class="sub"><span class="dot" id="status-dot"></span><span id="status">Fuera de servicio</span></div></div>
+    </div>
+    <button class="btn conn" id="connect" type="button">Entrar en servicio</button>
     <div id="error" class="error"></div>
-    <div id="list"></div>
-  </main>
-  <script>
-    const resource = "GRUA07";
-    const token = sessionStorage.getItem("apiToken") || "";
-    let connected = false;
-    let messageId = Date.now() % 1000000;
-    const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[char]);
-
-    async function api(path, options = {}) {
-      const headers = new Headers(options.headers || {});
-      if (token) headers.set("Authorization", `Bearer ${token}`);
-      const response = await fetch(path, {...options, headers});
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "No se pudo completar la accion");
-      return data;
-    }
-
-    function frame(kind, payload) {
-      messageId += 1;
-      return `${resource}|CENTRO|${kind}|${messageId}|${payload.join("|")}`;
-    }
-
-    async function sendFrame(kind, payload) {
-      await api("/api/v1/simulator/frames", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({frame: frame(kind, payload)}),
-      });
-    }
-
-    async function connect() {
-      try {
-        await sendFrame("HB", ["GRUA", "NORTE", "-", "1"]);
-        connected = true;
-        document.querySelector("#status").textContent = "en servicio · esperando asignaciones";
-        document.querySelector("#connect").hidden = true;
-        document.querySelector("#error").textContent = "";
-        tick();
-      } catch (error) {
-        document.querySelector("#error").textContent = error.message;
-      }
-    }
-
-    async function update(kind, node, sequence, state = "") {
-      try {
-        await sendFrame(kind, state ? [node, sequence, state] : [node, sequence]);
-        document.querySelector("#error").textContent = "";
-        tick();
-      } catch (error) {
-        document.querySelector("#error").textContent = error.message;
-      }
-    }
-
-    function actions(request) {
-      const node = JSON.stringify(request.node);
-      const sequence = JSON.stringify(String(request.seq));
-      if (request.estado === "DESPACHADA") return `<button class="btn accept" onclick='update("ACC",${node},${sequence})'>Aceptar asignacion · ACC &rarr; ACEPTADA</button>`;
-      if (request.estado === "ACEPTADA") return `<button class="btn route" onclick='update("ST",${node},${sequence},"enruta")'>En ruta · ST enruta &rarr; EN_CURSO</button>`;
-      if (request.estado === "EN_CURSO") return `<button class="btn place" onclick='update("ST",${node},${sequence},"enlugar")'>En el lugar · ST enlugar</button><button class="btn resolve" onclick='update("ST",${node},${sequence},"resuelta")'>Resuelta · ST resuelta &rarr; RESUELTA</button>`;
-      return "";
-    }
-
-    async function tick() {
-      if (!connected) return;
-      try {
-        const data = await api("/api/state");
-        const requests = (data.requests || []).filter(request => request.operador === resource && !["RESUELTA", "CANCELADA"].includes(request.estado));
-        document.querySelector("#list").innerHTML = requests.length ? requests.map(request => {
-          const location = request.lat && request.lon ? `${request.lat}, ${request.lon}` : request.lugar || "sin ubicacion";
-          return `<section class="card"><div class="cat p${request.pri}">${escapeHtml(request.cat)} · prioridad ${request.pri}</div><div class="loc">${escapeHtml(location)}</div><div class="meta">${escapeHtml(request.detalle || "-")} · de ${escapeHtml(request.node)}</div><span class="state">${escapeHtml(request.estado)}</span>${actions(request)}</section>`;
-        }).join("") : '<div class="empty">En servicio. Sin asignaciones por ahora.</div>';
-      } catch (error) {
-        document.querySelector("#error").textContent = error.message;
-      }
-    }
-
-    document.querySelector("#connect").addEventListener("click", connect);
-    setInterval(tick, 2000);
-  </script>
+    <div id="list" class="list"></div>
+    <div class="spacer"></div>
+    <div class="foot">Recibes asignaciones del puesto de mando por radio LoRa.</div>
+  </div>
+  <script src="/grua.js"></script>
 </body>
 </html>
