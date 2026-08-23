@@ -25,4 +25,12 @@ Cuando vuelve internet, el centro local sincroniza automáticamente sus eventos 
 - Portal, gateway, nodo recurso y validadores de hardware incluidos.
 - Outbox SQLite, worker HTTPS, ingesta idempotente en Supabase y Hub online desplegados.
 
-El Hub está disponible en <https://woki-hub.vercel.app>. La promesa central no cambia: **WOKI funciona cuando internet no funciona**.
+## Enlaces públicos
+
+- **Entrega principal:** <https://woki-hub.vercel.app>
+- **Configuración guiada:** <https://woki-hub.vercel.app/setup>
+- **Centro Python en modo demo aislado:** <https://woki-command-center-demo.onrender.com>
+- **Diseños listos para impresión 3D:** <https://woki-lora-enclosures.vercel.app>
+- **Visualización del flujo LoRa:** <https://lora.uprizing.me>
+
+La promesa central no cambia: **WOKI funciona cuando internet no funciona**.

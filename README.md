@@ -4,166 +4,144 @@
 
 **Track: 🚨 Emergencies · team-28 · Platanus Hack 26 Bogotá**
 
-Cuando un terremoto tumba la red celular, pedir ayuda deja de ser un problema de
-interfaz y se vuelve un problema de comunicación. WOKI abre un camino local entre
-la persona afectada y el puesto de mando, sin depender de internet.
+> Pedir ayuda y coordinar rescates sin internet, con visibilidad remota cuando vuelve la red.
+
+Cuando un terremoto tumba la red celular, pedir ayuda deja de ser un problema de interfaz y se
+vuelve un problema de comunicación. WOKI abre un camino local entre la persona afectada y el puesto
+de mando, sin depender de internet.
 
 ```text
-📱 Celular → WiFi abierto del nodo → LoRa 915 MHz → Gateway → Centro local (Raspberry Pi)
-                                                                    ↕ (cuando vuelve la red)
-                                                              Hub online de solo lectura
+Celular → WiFi local → TTGO Esclavo → LoRa 915 MHz → TTGO Maestro → USB
+                                                                     ↓
+                                                     Centro Python + SQLite
+                                                                     ↓ internet disponible
+                                                        Vercel → Supabase
 ```
 
-**Hub online:** <https://woki-hub.vercel.app>
+## Todos los enlaces públicos
 
----
+| Experiencia | URL | Qué demuestra | Alcance |
+|---|---|---|---|
+| **Entrega principal** | [Hub WOKI](https://woki-hub.vercel.app) | Entrada, onboarding y réplica online | URL oficial del concurso |
+| Configuración guiada | [Preparar kit](https://woki-hub.vercel.app/setup) | Instalación del Maestro y Esclavo, voz y piezas 3D | Simulable sin dispositivos |
+| Centro online | [Command Center](https://woki-hub.vercel.app/command-center) | Módulos operacionales con datos sincronizados | Réplica de solo lectura |
+| Centro Python | [Demo en Render](https://woki-command-center-demo.onrender.com) | Centro local interactivo con datos sintéticos | Sin hardware ni sincronización externa; puede tardar en despertar |
+| Diseño físico | [Visor 3D](https://woki-lora-enclosures.vercel.app) | Archivos STL/3MF listos para descargar e imprimir | Extensión física opcional |
+| Flujo LoRa | [Visualización](https://lora.uprizing.me) | Recorrido conceptual entre celulares, nodos y Centro | Apoyo visual, no dependencia operacional |
 
-## Features
+El campo `deploy-url` de [`platanus-hack-project.jsonc`](./platanus-hack-project.jsonc) apunta al
+Hub principal. Los demás despliegues son evidencia complementaria.
 
-### 1. Entrar a la red: sin app, sin contraseña
+## Frictionless por diseño
 
-El nodo levanta una red WiFi **abierta**, sin contraseña, con un nombre que se
-entiende solo: `[AFECTADOS] RED DE AYUDA WOKI`. Conectarse es toda la instalación
-que hay que hacer. No hay descarga, no hay cuenta, no hay clave que repartir en
-medio de una emergencia.
+- **Para la persona afectada:** no instala una app ni crea una cuenta. Se conecta a
+  `[AFECTADOS] RED DE AYUDA WOKI`, abre el portal cautivo y pide ayuda en pocos pasos. La ubicación
+  ayuda, pero nunca bloquea el reporte.
+- **Para quien prepara el kit:** el onboarding usa imágenes, simulación sin dispositivos, guía de
+  voz en español y prompts especializados para ChatGPT o Claude.
+- **Para quien prefiere terminal:** dos instaladores preparan una laptop limpia, Arduino CLI,
+  ESP32, librerías, firmware y Python sin requerir Arduino IDE.
 
-Como la red no tiene contraseña, **cualquier forma de acercar a la gente al nodo
-sirve igual de bien**: un tag NFC pegado en un poste o en el kit, un QR impreso,
-una URL dictada por radio o simplemente ver la red en la lista de WiFi del
-teléfono. El tag NFC está pensado como pieza física de distribución —algo que se
-pega en puntos de la ciudad o se reparte con el kit para que acercar el teléfono
-baste—, pero es una comodidad, nunca un requisito: si no hay tag, la red sigue
-estando ahí, visible y abierta para todos.
+## Cómo funciona
 
-> **Estado:** red abierta y descubrimiento por WiFi/URL — *validado en hardware*.
-> Tag NFC y QR impreso — *definidos*, aún sin implementar.
+### 1. Portal local, sin app
 
-### 2. Portal cautivo: pedir ayuda en dos toques
+El nodo afectado ofrece una red WiFi abierta y un portal servido por el ESP32. La persona elige
+`RESCATE`, `MEDICO`, `FUEGO`, `AGUA` o `GRUA`, o se reporta a salvo. Después puede compartir GPS o
+describir el lugar manualmente. La pantalla sigue el estado: recibida, aceptada, en ruta y resuelta.
 
-Al conectarse, el teléfono abre solo el portal (`nodo_portal_https`, HTTPS sobre
-el ESP32). Ahí la persona elige **qué necesita** —`RESCATE`, `MEDICO`, `FUEGO`,
-`AGUA`, `GRUA`— o se reporta **a salvo** para que su familia lo sepa.
+### 2. LoRa bidireccional
 
-Dos decisiones de diseño que importan bajo estrés:
+Las placas LilyGO TTGO LoRa32 transportan paquetes cortos por SX1276 a 915 MHz. El protocolo usa
+destino, identificador de mensaje, ACK, deduplicación, CAD y reintentos. El Centro recibe reportes y
+también envía despachos, estados y broadcasts a los recursos.
 
-- **La ubicación nunca bloquea.** Primero se pide ayuda; el GPS se ofrece
-  después. Si el teléfono no lo da, se escribe el lugar a mano
-  (`Portal 80 con calle 13`) y el reporte sale igual.
-- **La pantalla sigue el estado en vivo.** El ciudadano ve su solicitud pasar de
-  recibida a aceptada, en ruta y resuelta, sin refrescar ni volver a conectarse.
+### 3. Centro local como fuente de verdad
 
-> **Estado:** *validado en hardware* (iOS abre el portal solo; Android a veces
-> pide entrar a `192.168.4.1`).
-
-### 3. Triage: prioridad antes que orden de llegada
-
-Cada solicitud viaja con **categoría** y **prioridad 0–3**, donde `0 = vida en
-riesgo`, `1` alto, `2` medio, `3` bajo. El centro no atiende por orden de
-llegada: ordena por `(prioridad, hora)`, así una fractura expuesta no queda
-detrás de una solicitud de agua que llegó primero.
-
-El ciclo de vida de un incidente es explícito y auditable:
+Una Raspberry Pi o laptop ejecuta el Centro Python. SQLite conserva solicitudes, recursos,
+timeline, personas a salvo y una outbox durable. El mapa, triage y dashboard operan offline. El
+sistema recomienda recursos compatibles, pero una persona autoriza cada despacho crítico.
 
 ```text
 PENDIENTE → ACEPTADA → EN_CURSO → RESUELTA
                     ↘ CANCELADA
 ```
 
-El operador puede **elevar la prioridad al despachar** si el contexto lo amerita,
-y cada transición queda registrada con su origen en el timeline del incidente.
-**El despacho siempre requiere autorización humana**: el sistema recomienda
-recursos compatibles, no decide solo.
+### 4. Sincronización eventual
 
-> **Estado:** *implementado* y verificado con pruebas automáticas del ciclo
-> completo (SOS → triage → despacho → aceptación → trayecto → resolución).
+Cuando vuelve internet, el Centro envía su outbox al endpoint autenticado de Vercel. Supabase
+ingiere cada evento de forma idempotente y el Hub muestra una réplica de solo lectura. Si Vercel,
+Supabase o internet fallan, la operación local continúa y la cola reintenta después.
 
-### 4. Radio LoRa: el canal que sobrevive
+### 5. Onboarding guiado
 
-Placas **LilyGO TTGO LoRa32** (SX1276, 915 MHz) mueven paquetes cortos de texto
-—menos de 200 bytes— entre los nodos y el gateway. El protocolo es direccionado
-y legible por serial:
+El Hub guía nueve pasos desde la descarga del proyecto hasta la verificación completa, incluyendo
+antenas, Maestro, Esclavo, WiFi local y piezas imprimibles. El modo simulación permite entender el
+recorrido sin disponer todavía del hardware.
 
-```text
-ORIGEN | DESTINO | TIPO | MSGID | payload...
-```
+## Estado demostrado
 
-Diez tipos de mensaje cubren toda la operación: `SOS` (pedir ayuda), `OK`
-(reportarse a salvo), `DISP` (despachar), `ACC` (aceptar, estilo Uber), `ST`
-(cambio de estado), `POS`, `HB` (heartbeat del recurso), `BC` / `BCA`
-(broadcast y su confirmación) y `ACK`.
+| Capacidad | Estado |
+|---|---|
+| Portal cautivo y envío desde celular | Validado en hardware |
+| LoRa, ACK y canal bidireccional | Validado en hardware |
+| SOS, triage, despacho, aceptación, trayecto y resolución | Implementado y probado automáticamente |
+| Centro Python, SQLite y mapa offline | Implementado |
+| Outbox, ingesta idempotente y Hub online | Implementado y desplegado |
+| Onboarding, voz en español y prompts de soporte | Implementado y desplegado |
+| NFC y QR para descubrir la red | Definido, todavía no implementado |
+| Carcasas y bandejas 3D | Diseñadas; validar tolerancias físicas antes de campo |
 
-El transporte asume que la radio falla: filtro por destino, **ACK dirigido**,
-anti-duplicados por `(ORIGEN, MSGID)`, CAD y hasta 3 reintentos con backoff. Y
-el canal es **bidireccional**: el centro despacha misiones y emite broadcasts
-por zona o globales, y los estados vuelven hasta la pantalla del ciudadano.
+## Stack tecnológico
 
-> **Estado:** enlace, ACK y canal de vuelta — *validados en hardware*.
+| Capa | Tecnología | Responsabilidad |
+|---|---|---|
+| Hardware | LilyGO TTGO LoRa32 T3 V1.6.1, ESP32-PICO-D4, SX1276 | Nodos de campo y Gateway Maestro |
+| Firmware | C++/Arduino, RadioLib, WiFi SoftAP | Portal local y protocolo LoRa 915 MHz |
+| Centro offline | Python 3, SQLite WAL, pyserial | Radio, persistencia, triage, API y sincronizador |
+| Mapas | Leaflet, VectorGrid, MBTiles, OpenStreetMap/Geofabrik | Cartografía local y online |
+| Hub online | Next.js 16, React 19, TypeScript, Bun | Onboarding y Command Center sincronizado |
+| Datos online | Supabase Postgres, RLS y RPC idempotente | Réplica segura de eventos operacionales |
+| Despliegue | Vercel y Render | Hub principal y demo aislada del Centro Python |
+| Onboarding | ElevenLabs Multilingual v2 + prompts para ChatGPT/Claude | Guía de voz y acompañamiento de instalación |
+| Diseño físico | OpenSCAD, STL/3MF y Three.js | Carcasas y visor de piezas imprimibles |
 
-### 5. Command center local: la fuente de verdad
+## Probarlo
 
-En la Raspberry Pi (o una laptop), `center/` guarda todo en **SQLite**, muestra
-un tablero en vivo con mapa offline, cola de solicitudes filtrable, estado de
-recursos, broadcasts y personas a salvo. Funciona con la red caída porque nunca
-dependió de ella.
+### Camino guiado
 
-> **Estado:** *implementado*, con cartografía offline en la máquina local.
+Abre <https://woki-hub.vercel.app/setup>. El modo simulación está activo por defecto.
 
-### 6. Onboarding: armar un kit sin saber de hardware
+### Camino técnico
 
-`/setup` en el Hub es un asistente visual de **nueve pasos** que va desde
-conseguir el proyecto hasta verificar el recorrido completo, pasando por la
-antena, el LoRa maestro, el esclavo y las piezas 3D imprimibles. Tres detalles
-que bajan la fricción:
-
-- **Modo simulación:** se puede recorrer entero sin tener las placas enfrente.
-- **Narración por voz en español** en cada paso.
-- **Prompt copiable** para pegar en ChatGPT o Claude, que acompaña tanto a una
-  persona técnica como a una que nunca soldó nada. Un prompt aparte compara
-  stock, compatibilidad, tiendas cercanas y costo del kit en moneda local.
-
-Para quien prefiere terminal, `scripts/instalar_maestro.sh` e
-`instalar_esclavo.sh` hacen lo mismo sin pasar por el navegador.
-
-> **Estado:** *implementado*; no modifica dispositivos por sí solo.
-
-### 7. Hub online: visibilidad, no dependencia
-
-Cuando vuelve internet, el centro local vacía su **outbox** contra un hub de
-**solo lectura**: overview con mapa, solicitudes, recursos, trazabilidad de red,
-broadcasts y personas a salvo. La ingesta es idempotente, así que reintentar es
-seguro; si la nube falla, la operación local continúa y la cola espera.
-
-El hub **no ejecuta acciones críticas**. Muestra información: la autorización de
-despacho vive en el centro local. Las posiciones se redondean y los nombres y
-documentos de personas a salvo nunca salen del sitio.
-
-> **Estado:** *implementado* y desplegado.
-
----
-
-## Probarlo en 3 minutos
-
-Sin hardware, solo el tablero:
+Clona el repositorio y conecta siempre la antena de 915 MHz antes de energizar una placa.
 
 ```bash
-cd lora-emergencia
-pip install pyserial
-python3 center/center.py --demo   # abre http://localhost:8080
+git clone https://github.com/platanus-hack/platanus-hack-26-co-team-28.git
+cd platanus-hack-26-co-team-28
 ```
 
-Con dos placas TTGO:
+Prepara el Gateway Maestro y el Centro en macOS o Linux:
 
 ```bash
-./scripts/flash.sh nodo_portal_https /dev/cu.usbserial-AAAA   # nodo + portal
-./scripts/flash.sh gateway_bidir     /dev/cu.usbserial-BBBB   # gateway
-python3 center/center.py /dev/cu.usbserial-BBBB
-# Conecta el celular a la red "[AFECTADOS] RED DE AYUDA WOKI" y pide ayuda.
+bash lora-emergencia/scripts/instalar_maestro.sh
 ```
 
-⚠️ **Nunca energices una placa sin la antena enroscada.** Transmitir sin antena
-daña el amplificador de forma permanente.
+Prepara un nodo Esclavo/Recurso:
 
----
+```bash
+bash lora-emergencia/scripts/instalar_esclavo.sh
+```
+
+Sin hardware, inicia solamente el Centro con datos sintéticos:
+
+```bash
+cd lora-emergencia/center
+python3 center.py --demo
+```
+
+⚠️ **Nunca energices una placa sin la antena enroscada.** Transmitir sin antena puede dañar el
+amplificador de radio.
 
 ## Documentación
 
@@ -171,16 +149,15 @@ daña el amplificador de forma permanente.
 |---|---|
 | El relato para jurados | [`project-description.md`](project-description.md) |
 | La topología completa | [`docs/ARQUITECTURA-CONEXIONES.md`](docs/ARQUITECTURA-CONEXIONES.md) |
-| El protocolo de radio vigente | [`lora-emergencia/docs/PROTOCOLO-MINIMO.md`](lora-emergencia/docs/PROTOCOLO-MINIMO.md) |
-| Armar y flashear el hardware | [`lora-emergencia/README.md`](lora-emergencia/README.md) |
-| Operar el centro y sincronizar | [`docs/OPERAR-SINCRONIZACION.md`](docs/OPERAR-SINCRONIZACION.md) |
-| El índice completo | [`docs/README.md`](docs/README.md) |
+| Operar el Centro y sincronizar | [`docs/OPERAR-SINCRONIZACION.md`](docs/OPERAR-SINCRONIZACION.md) |
+| Revisar el hardware compatible | [`lora-emergencia/docs/HARDWARE.md`](lora-emergencia/docs/HARDWARE.md) |
+| Entender el protocolo de radio | [`lora-emergencia/docs/PROTOCOLO-MINIMO.md`](lora-emergencia/docs/PROTOCOLO-MINIMO.md) |
+| Preparar el portal cautivo | [`lora-emergencia/docs/PORTAL-CAUTIVO-E2E.md`](lora-emergencia/docs/PORTAL-CAUTIVO-E2E.md) |
+| Fabricar las piezas 3D | [`lora-emergencia/diseno-3d/README.md`](lora-emergencia/diseno-3d/README.md) |
+| Navegar toda la documentación | [`docs/README.md`](docs/README.md) |
 
-Cada capacidad en la documentación se marca como **implementada**, **validada en
-hardware**, **definida** o **investigada**. No usamos "funciona" para algo que
-solo está diseñado.
-
----
+Cada capacidad se marca como **implementada**, **validada en hardware**, **definida** o
+**investigada**. No usamos “funciona” para algo que solo está diseñado.
 
 ## Equipo
 
