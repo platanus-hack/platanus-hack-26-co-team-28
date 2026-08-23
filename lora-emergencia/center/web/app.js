@@ -75,7 +75,7 @@ async function api(path, options = {}) {
 function notify(message, error = false) {
   const toast = document.querySelector("#toast");
   toast.textContent = message;
-  toast.style.background = error ? "#991b1b" : "#111";
+  toast.classList.toggle("error", error);
   toast.hidden = false;
   clearTimeout(notify.timer);
   notify.timer = setTimeout(() => { toast.hidden = true; }, 4000);
@@ -244,7 +244,7 @@ async function enterCenterPosition() {
 function metric(value, label) { return `<div class="metric"><strong>${value}</strong><span>${escapeHtml(label)}</span></div>`; }
 function requestListItem(item) {
   const triage = item.triage || { priority: item.priority };
-  return `<button class="list-item request-row" data-request-id="${item.id}" style="width:100%;text-align:left;background:#fff;border:0;border-bottom:1px solid var(--border);cursor:pointer">
+  return `<button class="list-item list-button request-row" data-request-id="${item.id}">
     <div class="list-line"><strong>#${item.id} · ${escapeHtml(item.category)}</strong>${priorityBadge(triage.priority)}${stateBadge(item.state)}</div>
     <div>${escapeHtml(item.detail || item.place || "Sin detalle")}</div><div class="cell-sub mono">${escapeHtml(item.node)} · ${ago(item.created_at)}</div>
   </button>`;
@@ -313,17 +313,29 @@ function bindMapControls() {
   updateOfflineMapControl();
 }
 
+const SHORTBREAD_LIGHT_COLORS = {
+  water: "#dbeafe", forest: "#e7eee8", land: "#f1f1ef", site: "#ececea", siteLine: "#dededb",
+  building: "#dededb", buildingLine: "#d0d0cc", boundary: "#a3a3a3", waterLine: "#9bc3e6",
+  rail: "#a3a3a3", majorRoad: "#8f8f8b", road: "#b8b8b4",
+};
+const SHORTBREAD_DARK_COLORS = {
+  water: "#172b3f", forest: "#172c25", land: "#151a20", site: "#1a2027", siteLine: "#303943",
+  building: "#29313a", buildingLine: "#3a4551", boundary: "#697586", waterLine: "#4f83ad",
+  rail: "#687483", majorRoad: "#9aa6b3", road: "#687583",
+};
+let shortbreadColors = document.documentElement.dataset.theme === "dark" ? SHORTBREAD_DARK_COLORS : SHORTBREAD_LIGHT_COLORS;
+
 function shortbreadStyle(properties, zoom, layerName) {
-  if (["ocean", "water_polygons"].includes(layerName)) return { fill: true, fillColor: "#dbeafe", fillOpacity: 1, stroke: false };
-  if (layerName === "land") return { fill: true, fillColor: properties.kind === "forest" ? "#e7eee8" : "#f1f1ef", fillOpacity: .8, stroke: false };
-  if (["sites", "street_polygons", "pier_polygons", "dam_polygons"].includes(layerName)) return { fill: true, fillColor: "#ececea", fillOpacity: .8, color: "#dededb", weight: .5 };
-  if (layerName === "buildings") return { fill: true, fillColor: "#dededb", fillOpacity: .85, color: "#d0d0cc", weight: .5 };
-  if (layerName === "boundaries") return { color: "#a3a3a3", weight: 1, dashArray: "4 4", opacity: .7 };
-  if (["water_lines", "dam_lines", "pier_lines"].includes(layerName)) return { color: "#9bc3e6", weight: zoom >= 14 ? 1.4 : 1, opacity: .9 };
+  if (["ocean", "water_polygons"].includes(layerName)) return { fill: true, fillColor: shortbreadColors.water, fillOpacity: 1, stroke: false };
+  if (layerName === "land") return { fill: true, fillColor: properties.kind === "forest" ? shortbreadColors.forest : shortbreadColors.land, fillOpacity: .8, stroke: false };
+  if (["sites", "street_polygons", "pier_polygons", "dam_polygons"].includes(layerName)) return { fill: true, fillColor: shortbreadColors.site, fillOpacity: .8, color: shortbreadColors.siteLine, weight: .5 };
+  if (layerName === "buildings") return { fill: true, fillColor: shortbreadColors.building, fillOpacity: .85, color: shortbreadColors.buildingLine, weight: .5 };
+  if (layerName === "boundaries") return { color: shortbreadColors.boundary, weight: 1, dashArray: "4 4", opacity: .7 };
+  if (["water_lines", "dam_lines", "pier_lines"].includes(layerName)) return { color: shortbreadColors.waterLine, weight: zoom >= 14 ? 1.4 : 1, opacity: .9 };
   if (["streets", "bridges", "ferries", "aerialways"].includes(layerName)) {
     const major = ["motorway", "trunk", "primary", "secondary"].includes(properties.kind);
     const rail = properties.rail || ["rail", "subway", "tram", "light_rail"].includes(properties.kind);
-    return { color: rail ? "#a3a3a3" : major ? "#8f8f8b" : "#b8b8b4", weight: major ? (zoom >= 14 ? 2.6 : 1.8) : (zoom >= 14 ? 1.3 : .8), opacity: rail ? .55 : .92, dashArray: rail ? "3 3" : null };
+    return { color: rail ? shortbreadColors.rail : major ? shortbreadColors.majorRoad : shortbreadColors.road, weight: major ? (zoom >= 14 ? 2.6 : 1.8) : (zoom >= 14 ? 1.3 : .8), opacity: rail ? .55 : .92, dashArray: rail ? "3 3" : null };
   }
   return { opacity: 0, fillOpacity: 0, weight: 0, radius: 0 };
 }
@@ -797,7 +809,7 @@ async function sendBroadcast() {
   if (!document.querySelector("#broadcast-confirmed").checked) return notify("Confirma la revisión operacional", true);
   try { await api("/api/v1/broadcasts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state.broadcastDraft) }); notify("Broadcast transmitido; esperando recibos técnicos"); state.broadcastDraft = null; state.broadcastReviewed = false; state.broadcastConfirmed = false; await renderBroadcasts(); } catch (error) { notify(error.message, true); }
 }
-function broadcastList(items) { return items.length ? `<div class="list">${items.map((item) => `<button class="list-item broadcast-detail" data-id="${item.message_id}" style="text-align:left;background:#fff;border:0;border-bottom:1px solid var(--border);cursor:pointer"><div class="list-line"><strong class="mono">#${item.message_id}</strong><span class="badge">${escapeHtml(item.scope)}</span><span class="badge ${item.priority === "URGENT" ? "critical" : ""}">${escapeHtml(item.priority)}</span><span class="badge">${escapeHtml(item.status)}</span></div><div>${escapeHtml(item.message)}</div><div class="cell-sub">${item.received_count} recibos técnicos · ${ago(item.created_at)}</div></button>`).join("")}</div>` : empty("Sin broadcasts enviados"); }
+function broadcastList(items) { return items.length ? `<div class="list">${items.map((item) => `<button class="list-item list-button broadcast-detail" data-id="${item.message_id}"><div class="list-line"><strong class="mono">#${item.message_id}</strong><span class="badge">${escapeHtml(item.scope)}</span><span class="badge ${item.priority === "URGENT" ? "critical" : ""}">${escapeHtml(item.priority)}</span><span class="badge">${escapeHtml(item.status)}</span></div><div>${escapeHtml(item.message)}</div><div class="cell-sub">${item.received_count} recibos técnicos · ${ago(item.created_at)}</div></button>`).join("")}</div>` : empty("Sin broadcasts enviados"); }
 async function openBroadcast(id) { try { const item = await api(`/api/v1/broadcasts/${id}`); document.querySelector("#drawer-content").innerHTML = `<section class="detail-section"><h3>Broadcast #${item.message_id}</h3><p>${escapeHtml(item.message)}</p><dl class="key-values"><dt>Audiencia</dt><dd>${escapeHtml(item.scope)}</dd><dt>Prioridad</dt><dd>${escapeHtml(item.priority)}</dd><dt>Expiración</dt><dd>${formatDate(item.expires_at)}</dd></dl></section><section class="detail-section"><h3>Recibos técnicos BCA</h3>${item.receipts.length ? `<div class="list">${item.receipts.map((receipt) => `<div class="list-item"><strong class="mono">${escapeHtml(receipt.node)}</strong><div class="cell-sub">${formatDate(receipt.received_at)}</div></div>`).join("")}</div>` : empty("Ningún nodo ha confirmado recepción técnica")}</section>`; drawer.classList.add("open"); drawer.setAttribute("aria-hidden", "false"); scrim.hidden = false; } catch (error) { notify(error.message, true); } }
 
 async function renderSafePeople() {
@@ -819,6 +831,11 @@ document.querySelector("#close-drawer").addEventListener("click", closeDrawer);
 scrim.addEventListener("click", closeDrawer);
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDrawer(); });
 window.addEventListener("hashchange", renderRoute);
+window.addEventListener("command-center-themechange", (event) => {
+  const theme = event.detail.theme;
+  shortbreadColors = theme === "dark" ? SHORTBREAD_DARK_COLORS : SHORTBREAD_LIGHT_COLORS;
+  hybridMap.localLayer?.redraw();
+});
 
 async function refreshCurrent() {
   const editing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);

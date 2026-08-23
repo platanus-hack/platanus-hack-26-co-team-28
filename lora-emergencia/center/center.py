@@ -36,6 +36,7 @@ STATIC_FILES = {
     "/grua": ("grua.html", "text/html; charset=utf-8"),
     "/grua.html": ("grua.html", "text/html; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
+    "/theme.js": ("theme.js", "text/javascript; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/vendor/leaflet-1.9.4.css": ("vendor/leaflet.css", "text/css; charset=utf-8"),
     "/vendor/leaflet-1.9.4.js": ("vendor/leaflet.js", "text/javascript; charset=utf-8"),

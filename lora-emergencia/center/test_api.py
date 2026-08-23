@@ -356,6 +356,10 @@ class HttpSafetyTests(unittest.TestCase):
 
         status, _content_type, body = self.request("GET", "/..%2Fcommand_core.py")
         self.assertEqual(status, 404)
+
+        status, content_type, _body = self.request("GET", "/theme.js")
+        self.assertEqual(status, 200)
+        self.assertTrue(content_type.startswith("text/javascript"))
         self.assertNotIn(b"sqlite3", body)
 
         status, _content_type, _body = self.request("GET", "/web/app.js")
@@ -397,11 +401,34 @@ class HttpSafetyTests(unittest.TestCase):
             response.read()
             self.assertEqual(response.getheader("Cache-Control"), "public, max-age=31536000, immutable")
 
-        for path in ("/", "/app.js", "/styles.css", "/vendor/LEAFLET-LICENSE.txt", "/vendor/LEAFLET-VECTORGRID-LICENSE.txt"):
+        for path in ("/", "/theme.js", "/app.js", "/styles.css", "/vendor/LEAFLET-LICENSE.txt", "/vendor/LEAFLET-VECTORGRID-LICENSE.txt"):
             self.connection.request("GET", path)
             response = self.connection.getresponse()
             response.read()
             self.assertEqual(response.getheader("Cache-Control"), "no-cache")
+
+    def test_command_center_theme_is_manual_persistent_and_loaded_early(self):
+        index = (center.WEB_ROOT / "index.html").read_text(encoding="utf-8")
+        theme = (center.WEB_ROOT / "theme.js").read_text(encoding="utf-8")
+        app = (center.WEB_ROOT / "app.js").read_text(encoding="utf-8")
+        styles = (center.WEB_ROOT / "styles.css").read_text(encoding="utf-8")
+
+        self.assertLess(index.index('src="/theme.js"'), index.index('href="/styles.css"'))
+        self.assertIn('id="theme-toggle"', index)
+        self.assertIn('aria-pressed="false"', index)
+        self.assertIn('localStorage.getItem(storageKey)', theme)
+        self.assertIn('localStorage.setItem(storageKey, nextTheme)', theme)
+        self.assertIn('colorScheme.content = nextTheme', theme)
+        self.assertNotIn("prefers-color-scheme", index + theme + styles + app)
+        self.assertIn(':root[data-theme="dark"]', styles)
+        self.assertEqual(app.count("const SHORTBREAD_LIGHT_COLORS = {"), 1)
+        self.assertEqual(app.count("const SHORTBREAD_DARK_COLORS = {"), 1)
+        self.assertIn("let shortbreadColors =", app)
+        self.assertIn("shortbreadColors = theme === \"dark\"", app)
+        self.assertIn('hybridMap.localLayer?.redraw()', app)
+        self.assertLess(app.index("const SHORTBREAD_LIGHT_COLORS"), app.index("function shortbreadStyle"))
+        theme_update = app.index('shortbreadColors = theme === "dark"')
+        self.assertLess(theme_update, app.index("hybridMap.localLayer?.redraw()", theme_update))
 
     def test_leaflet_assets_negotiate_precompressed_gzip_with_representation_etags(self):
         path = "/vendor/leaflet-1.9.4.js"
