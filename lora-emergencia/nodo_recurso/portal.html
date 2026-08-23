@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101817">
+  <title>WOKI · Recurso</title>
+  <style>
+    :root{color-scheme:light;--ink:#17201f;--muted:#64706d;--paper:#f2f5f2;--card:#fff;--line:#dbe2df;--green:#0d6b4f;--red:#b42318;--amber:#a15c00;--shadow:0 18px 55px #12201b24}*{box-sizing:border-box}body{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--paper);color:var(--ink);margin:0}.w{max-width:560px;margin:auto;padding:16px 16px 44px}.h{background:#101817;color:#fff;padding:20px;border-radius:18px;box-shadow:var(--shadow)}.eyebrow{margin:0 0 5px;color:#9fbbb1;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.h b{font-size:25px}.meta{margin-top:5px;color:#cbd8d3}.c{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin-top:14px}.bc{border-color:#f1aaa4;background:#fff8f7}.bc.urgent{border-color:var(--red)}h2{font-size:18px;margin:0 0 12px}.mission{font-size:19px;font-weight:750;line-height:1.35}.mission-sub{color:var(--muted);margin-top:7px}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}button{min-height:48px;padding:12px;border:1px solid var(--line);border-radius:11px;background:#fff;color:var(--ink);font:inherit;font-weight:800;cursor:pointer}.primary{border-color:var(--green);background:var(--green);color:#fff}.sound{width:100%;margin-top:14px;border-color:#37665a;background:#173d33;color:#fff}button:disabled{cursor:not-allowed;opacity:.38}.muted{color:var(--muted);font-size:13px;line-height:1.5}.status{display:inline-flex;align-items:center;gap:7px;margin-top:12px;font-size:13px}.dot{width:9px;height:9px;border-radius:50%;background:#8b9793}.dot.ok{background:#48d597}.call{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:22px;background:#07100eea;color:#fff}.call[hidden]{display:none}.call-card{width:min(100%,440px);padding:28px;border:1px solid #ffffff24;border-radius:25px;background:linear-gradient(155deg,#173d33,#101817 66%);box-shadow:0 28px 90px #0008;text-align:center}.call-pulse{width:76px;height:76px;display:grid;place-items:center;margin:0 auto 18px;border-radius:50%;background:#ffce47;color:#17201f;font-size:33px;animation:pulse 1.4s infinite}.call h1{margin:0;font-size:25px}.call-kind{margin:8px 0;color:#b8d0c8;font-size:13px;font-weight:850;letter-spacing:.1em;text-transform:uppercase}.call-message{min-height:72px;font-size:18px;line-height:1.45}.call-actions{display:grid;gap:9px}.call-actions .primary{background:#fff;border-color:#fff;color:#173d33}.call-note{color:#b8c7c2;font-size:12px}.toast{position:fixed;left:50%;bottom:18px;z-index:20;transform:translateX(-50%);width:min(calc(100% - 32px),500px);padding:12px 15px;border-radius:10px;background:#17201f;color:#fff;text-align:center}.toast[hidden]{display:none}@keyframes pulse{50%{transform:scale(1.09);box-shadow:0 0 0 15px #ffce4722}}@media(max-width:420px){.actions{grid-template-columns:1fr}.call-card{padding:23px}}
+  </style>
+</head>
+<body>
+  <main class="w">
+    <header class="h">
+      <p class="eyebrow">Terminal offline del recurso</p>
+      <b id="resource">RECURSO</b>
+      <div id="meta" class="meta">Conectando con el nodo…</div>
+      <button id="enable-alerts" class="sound" type="button">🔊 Activar llamadas operativas</button>
+      <div class="status"><span id="connection-dot" class="dot"></span><span id="connection-text">Consultando estado local</span></div>
+    </header>
+
+    <section id="broadcast-card" class="c bc" hidden>
+      <h2>Mensaje del centro</h2>
+      <div id="broadcast"></div>
+    </section>
+
+    <section class="c">
+      <h2>Asignación actual</h2>
+      <div id="assignment" class="mission">Sin asignación</div>
+      <div id="assignment-meta" class="mission-sub"></div>
+      <div class="actions">
+        <button data-action="accept" class="primary" type="button">Aceptar misión</button>
+        <button data-action="enruta" type="button">En ruta</button>
+        <button data-action="enlugar" type="button">En el lugar</button>
+        <button data-action="resuelta" type="button">Resolver</button>
+      </div>
+    </section>
+    <p class="muted">El teléfono se comunica únicamente con este nodo por WiFi local. Las asignaciones y confirmaciones viajan entre el nodo y el Centro por LoRa.</p>
+  </main>
+
+  <section id="incoming-call" class="call" role="dialog" aria-modal="true" aria-labelledby="call-title" hidden>
+    <div class="call-card">
+      <div class="call-pulse" aria-hidden="true">!</div>
+      <p id="call-kind" class="call-kind">Mensaje del centro</p>
+      <h1 id="call-title">Llamada operativa</h1>
+      <p id="call-message" class="call-message"></p>
+      <div class="call-actions">
+        <button id="accept-call" class="primary" type="button">Aceptar misión</button>
+        <button id="enable-call-audio" type="button" hidden>Activar audio y escuchar</button>
+        <button id="silence-call" type="button">Silenciar y ver detalles</button>
+      </div>
+      <p class="call-note">Aceptar enviará la confirmación al Centro por LoRa.</p>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script src="/portal_logic.js"></script>
+  <script src="/portal_app.js"></script>
+</body>
+</html>

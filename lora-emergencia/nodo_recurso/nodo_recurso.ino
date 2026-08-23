@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <RadioLib.h>
+#include "portal_assets.h"
 
 #define LORA_SCK 5
 #define LORA_MISO 19
@@ -154,11 +155,15 @@ String jsonEscape(String value) {
 }
 
 void handleState() {
+  String assignmentId = requestOrigin.length() && requestSeq.length()
+    ? requestOrigin + ":" + requestSeq : "";
   String json = "{\"resource\":\"" + String(RESOURCE_ID) + "\",\"type\":\"" + RESOURCE_TYPE +
     "\",\"zone\":\"" + RESOURCE_ZONE + "\",\"assignmentState\":\"" + assignmentState +
+    "\",\"assignmentId\":\"" + jsonEscape(assignmentId) +
     "\",\"requestOrigin\":\"" + jsonEscape(requestOrigin) + "\",\"requestSeq\":\"" + requestSeq +
     "\",\"category\":\"" + requestCategory + "\",\"priority\":\"" + requestPriority +
     "\",\"place\":\"" + jsonEscape(requestPlace) + "\",\"detail\":\"" + jsonEscape(requestDetail) +
+    "\",\"broadcastId\":\"" + jsonEscape(broadcastId) +
     "\",\"broadcast\":\"" + jsonEscape(broadcastText) + "\",\"broadcastPriority\":\"" + broadcastPriority + "\"}";
   server.send(200, "application/json", json);
 }
@@ -210,7 +215,13 @@ void setup() {
   WiFi.mode(WIFI_AP);
   String ssid = "RECURSO_" + String(RESOURCE_ID);
   WiFi.softAP(ssid.c_str());
-  server.on("/", [](){ server.send(200, "text/html; charset=utf-8", PAGE); });
+  server.on("/", [](){ server.send(200, "text/html; charset=utf-8", RESOURCE_PORTAL_HTML); });
+  server.on("/portal_logic.js", [](){
+    server.send(200, "application/javascript; charset=utf-8", RESOURCE_PORTAL_LOGIC_JS);
+  });
+  server.on("/portal_app.js", [](){
+    server.send(200, "application/javascript; charset=utf-8", RESOURCE_PORTAL_APP_JS);
+  });
   server.on("/api/state", handleState);
   server.on("/api/action", HTTP_POST, handleAction);
   server.begin();
