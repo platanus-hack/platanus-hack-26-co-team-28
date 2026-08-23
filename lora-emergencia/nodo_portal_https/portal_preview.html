@@ -239,18 +239,52 @@ function gpsFalla(box){
 function mostrarEscape(){
   var e=document.getElementById('escape'); if(!e) return;
   var ua=navigator.userAgent, isiOS=/iPhone|iPad|iPod/i.test(ua), isAnd=/Android/i.test(ua);
-  // Destino: Chrome debe caer DIRECTO en la vista de categorias, no en el home.
-  // Usamos query param (?v=pedir), no fragmento: el '#' choca con el delimitador
-  // '#Intent' del intent:// y Chrome no lo entrega como hash. El query sí sobrevive.
-  var HTTPS='https://ayuda.homiapp.xyz/?v=pedir';
-  var INTENT='intent://ayuda.homiapp.xyz/?v=pedir#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+encodeURIComponent(HTTPS)+';end';
   if(isAnd){
-    e.innerHTML='<b style="color:#4C9AFF">¿Quieres enviar tu ubicación GPS exacta?</b><br>Abre esta página en Chrome:<br><a href="'+INTENT+'" style="display:block;margin-top:8px;background:#4C9AFF;color:#04162e;padding:12px;border-radius:10px;text-decoration:none;text-align:center;font-weight:700">Abrir en Chrome</a>';
+    e.innerHTML='<b style="color:#4C9AFF">¿Quieres enviar tu ubicación GPS exacta?</b><br>Ya guardamos lo que escribiste. Abre esta página en Chrome, solo falta el GPS:<br><button type="button" onclick="abrirEnChrome()" style="display:block;width:100%;margin-top:8px;background:#4C9AFF;color:#04162e;padding:12px;border-radius:10px;border:none;font-weight:700;font-size:15px;font-family:inherit;cursor:pointer">Abrir en Chrome</button>';
     e.style.display='block';
   }else if(isiOS){
     e.innerHTML='<b style="color:#4C9AFF">¿Quieres enviar tu ubicación GPS exacta?</b><br>Toca <b>Cancelar</b> arriba, elige <b>Usar sin conexión</b>, abre <b>Safari</b> y entra a <b>ayuda.homiapp.xyz</b>';
     e.style.display='block';
   }
+}
+// Construye las URLs de escape con lo que el ciudadano YA escribio (categoria,
+// detalle, lugar). Se llama al momento del clic (no antes), para llevar el
+// estado mas reciente. Destino: Chrome cae DIRECTO en la vista de categorias
+// (?v=pedir), ya con cat/d/l listos para restaurarEstado(). Usamos query param,
+// no fragmento: el '#' choca con el delimitador '#Intent' del intent:// y
+// Chrome no lo entrega como hash. El query si sobrevive completo.
+function construirUrlsEscape(){
+  var detalle=document.getElementById('msg').value.trim();
+  var lugar=document.getElementById('lugar').value.trim();
+  var qs='v=pedir';
+  if(S.cat) qs+='&cat='+encodeURIComponent(S.cat);
+  if(detalle) qs+='&d='+encodeURIComponent(detalle);
+  if(lugar) qs+='&l='+encodeURIComponent(lugar);
+  var HTTPS='https://ayuda.homiapp.xyz/?'+qs;
+  var INTENT='intent://ayuda.homiapp.xyz/?'+qs+'#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+encodeURIComponent(HTTPS)+';end';
+  return {HTTPS:HTTPS, INTENT:INTENT};
+}
+function abrirEnChrome(){ location.href = construirUrlsEscape().INTENT; }
+// Lee cat/d/l de la URL (los puso construirUrlsEscape antes del salto a Chrome)
+// y rellena el formulario. Asi el ciudadano no repite lo que ya escribio.
+function restaurarEstado(){
+  try{
+    var params=new URLSearchParams(location.search);
+    var cat=params.get('cat'), d=params.get('d'), l=params.get('l');
+    if(cat && CATNOMBRE[cat]){
+      S.cat=cat;
+      var catEl=document.querySelector('#cats .cat[data-cat="'+cat+'"]');
+      if(catEl) catEl.classList.add('sel');
+      mostrarSubs(cat);
+      if(d){
+        var chip=document.querySelector('#subs .chip[data-sub="'+CSS.escape(d)+'"]');
+        if(chip) chip.classList.add('sel');
+        document.getElementById('msg').value=d;
+        actualizarContador();
+      }
+    }
+    if(l) document.getElementById('lugar').value=l;
+  }catch(err){ /* si algo falla, el ciudadano llena el formulario de nuevo */ }
 }
 
 document.getElementById('cats').addEventListener('click', function(e){
@@ -368,9 +402,10 @@ function filaMono(k,v){ return '<div class="row"><span class="k">'+k+'</span><sp
 function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]}); }
 function hora(){ var d=new Date(),p=function(n){return('0'+n).slice(-2)}; return p(d.getHours())+':'+p(d.getMinutes()); }
 document.getElementById('clock').textContent = hora();
-// Chrome abre la pagina con #pedir (viene del intent Android): entra directo a
-// categorias. go('pedir') dispara la captura de GPS, que es el objetivo del salto.
-if(location.hash==='#pedir' || /[?&]v=pedir/.test(location.search)){ go('pedir'); }
+// Chrome abre la pagina con ?v=pedir (viene del intent Android): entra directo
+// a categorias, con lo ya escrito restaurado. go('pedir') dispara la captura
+// de GPS, que es el objetivo del salto.
+if(location.hash==='#pedir' || /[?&]v=pedir/.test(location.search)){ restaurarEstado(); go('pedir'); }
 </script>
 </body>
 </html>
