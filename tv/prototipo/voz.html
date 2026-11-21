@@ -143,7 +143,9 @@ label.chk input{width:22px;height:22px;margin:1px 0 0;accent-color:var(--blue);f
 </div></div>
 
 <script>
-const BRIDGE = new URLSearchParams(location.search).get('bridge') || 'http://localhost:8788';
+// ?bridge= solo para otro puerto local: las grabaciones de voz nunca deben poder mandarse a otro servidor por un enlace.
+const BRIDGE = (() => { const def = 'http://localhost:8788', q = new URLSearchParams(location.search).get('bridge');
+  try { const u = new URL(q); return u.protocol==='http:' && ['localhost','127.0.0.1'].includes(u.hostname) ? u.origin : def; } catch { return def; } })();
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = s => Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0');

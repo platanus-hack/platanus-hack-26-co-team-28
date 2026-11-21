@@ -38,7 +38,8 @@ function parse(raw: string, ini?: string): Sug[] {
   try { list = JSON.parse(m[0]).suggestions ?? []; } catch { return []; }
   const seen = new Set<string>();
   return list
-    .map((x) => ({ text: String(x?.text ?? "").trim().slice(0, 160), tone: String(x?.tone ?? "").slice(0, 30), emo: EMOS.includes(x?.emo) ? x.emo : "seria" }))
+    // sin < >: el texto viene de un modelo que lee mensajes de terceros (defensa además del escape en la TV)
+    .map((x) => ({ text: String(x?.text ?? "").replace(/[<>]/g, "").trim().slice(0, 160), tone: String(x?.tone ?? "").replace(/[<>]/g, "").slice(0, 30), emo: EMOS.includes(x?.emo) ? x.emo : "seria" }))
     .filter((x) => x.text && !seen.has(x.text) && seen.add(x.text))
     // por iniciales: primero las que respetan exactamente las letras
     .sort((a, b) => (ini ? Number(initialsOf(b.text) === ini) - Number(initialsOf(a.text) === ini) : 0));

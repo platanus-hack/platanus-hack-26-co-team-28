@@ -1096,7 +1096,7 @@ function renderSettings(){
 function openEmoRing(i){
   S.emoRingFor=i; const c=S.cards[i];
   const pos=[[50,6],[90,28],[90,72],[50,94],[10,72],[10,28]];
-  $('#emoC').innerHTML=`<div class="mid glass">“${c.text}”<br><br>Propuesta: ${EMO[c.emo].e} ${EMO[c.emo].n}</div>`+
+  $('#emoC').innerHTML=`<div class="mid glass">“${esc(c.text)}”<br><br>Propuesta: ${EMO[c.emo].e} ${esc(EMO[c.emo].n)}</div>`+
     EMOS.map((e,k)=>`<div class="t" data-t data-act="setEmo:${e.id}" style="left:${pos[k][0]}%;top:${pos[k][1]}%;--i:${k}"><span>${e.e}</span>${e.n}</div>`).join('');
   decorate($('#emoC')); $('#emoRing').classList.add('on'); clearFocus(); log('anillo de emociones');
 }

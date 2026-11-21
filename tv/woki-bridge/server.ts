@@ -213,6 +213,10 @@ const server = http.createServer(async (req, res) => {
   // Las rutas /api/* solo aceptan JSON (fuerza preflight CORS) y el Origin exacto de la app.
   // El webhook de wapi queda fuera: se autentica con su firma (WAPI_WEBHOOK_SECRET).
   if (url.pathname.startsWith("/api/")) {
+    // 0) Anti DNS rebinding: una página maliciosa puede hacer que su dominio resuelva a 127.0.0.1 y leer /api/* por GET.
+    //    El navegador manda su propio Host (evil.com:PORT), así que solo se acepta el Host local exacto.
+    if (![`localhost:${PORT}`, `127.0.0.1:${PORT}`].includes(String(req.headers.host)))
+      return json(res, 421, { ok: false, reason: "host no permitido" });
     // 1) /api/* es solo para la app local. Lo que entra por un túnel trae estos encabezados → fuera,
     //    así una URL de túnel filtrada no permite mandar ni leer mensajes (solo /webhook/wapi es público).
     const h = req.headers;
