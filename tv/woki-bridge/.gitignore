@@ -1,0 +1,12 @@
+.env
+.env.*
+node_modules
+qr.html
+history.json
+history.json.tmp
+# datos reales o de ejecución: nunca al repo
+profile.json
+profile.sandbox.json
+history.json
+voz.json
+*.tmp

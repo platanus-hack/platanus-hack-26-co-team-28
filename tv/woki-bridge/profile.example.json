@@ -1,0 +1,5 @@
+{ "contacts": [
+  { "id": "yo",     "name": "Persona de prueba", "relation": "yo mismo",  "phone": "+56900000000", "tone": "directo" },
+  { "id": "sofia",  "name": "Sofía",  "relation": "hija",      "phone": "+56900000001", "tone": "cariñosa y bromista" },
+  { "id": "camila", "name": "Camila", "relation": "cuidadora", "phone": "+56900000002", "tone": "cordial" }
+]}

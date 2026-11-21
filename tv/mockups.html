@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WOKI · Mockups TV</title>
+<style>
+  :root{
+    --bg:#101010; --panel:#1b1b1b; --card:#202020; --line:#2e2e2e;
+    --txt:#E6E6E6; --muted:#9a9a9a;
+    --focus:#7cc4ff; --ok:#5fd38d; --warn:#f0b54a; --alarm:#ff5d5d;
+    --love:#ff8fb1; --fun:#ffd166; --calm:#8ecae6; --iron:#c3a6ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#0a0a0a;color:var(--txt);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:32px 16px 80px}
+  h1{font-size:22px;margin:0 auto 6px;max-width:1200px}
+  .intro{color:var(--muted);max-width:1200px;margin:0 auto 32px;font-size:14px;line-height:1.5}
+  .screen{max-width:1200px;margin:0 auto 48px}
+  .screen h2{font-size:16px;margin:0 0 4px}
+  .screen p.note{color:var(--muted);font-size:13px;margin:0 0 12px;line-height:1.5}
+  /* TV 1920x1080: 1px de diseño = 0.0521cqw */
+  .tv{aspect-ratio:16/9;width:100%;background:var(--bg);border:10px solid #000;border-radius:14px;outline:1px solid #333;container-type:inline-size;position:relative;overflow:hidden}
+  .safe{position:absolute;inset:2.8cqw 5cqw;display:flex;flex-direction:column;gap:1.4cqw}
+  .status{display:flex;gap:2cqw;align-items:center;height:3.8cqw;font-size:1.7cqw;color:var(--muted)}
+  .pill{display:flex;align-items:center;gap:.6cqw;padding:.4cqw 1cqw;border-radius:2cqw;background:var(--panel);border:.12cqw solid var(--line)}
+  .dot{width:1cqw;height:1cqw;border-radius:50%}
+  .ok{background:var(--ok)} .warn{background:var(--warn)} .al{background:var(--alarm)}
+  .status .spacer{flex:1}
+  .msg{background:var(--panel);border-radius:1cqw;padding:1.2cqw 1.8cqw;display:flex;align-items:center;gap:1.5cqw;min-height:7cqw}
+  .msg .q{font-size:1.8cqw;color:var(--muted)}
+  .msg .t{font-size:4cqw;font-weight:600}
+  .typing{margin-left:auto;font-size:1.8cqw;color:var(--focus);display:flex;align-items:center;gap:.6cqw}
+  .grid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1.6cqw}
+  .card{background:var(--card);border-radius:1.2cqw;border:.3cqw solid transparent;padding:1.6cqw 6cqw 1.6cqw 2cqw;display:flex;flex-direction:column;justify-content:center;position:relative}
+  .card .ph{font-size:3.1cqw;line-height:1.2;font-weight:600}
+  .card .emo{position:absolute;top:1cqw;right:1.2cqw;font-size:3.2cqw}
+  .card .tone{font-size:1.6cqw;color:var(--muted);margin-top:.8cqw}
+  .card.focus{border-color:var(--focus);transform:scale(1.03);box-shadow:0 0 0 .3cqw rgba(124,196,255,.15)}
+  .ring{position:absolute;right:1.4cqw;bottom:1.2cqw;width:3cqw;height:3cqw;border-radius:50%;background:conic-gradient(var(--focus) 0 70%, #333 70% 100%);-webkit-mask:radial-gradient(circle,transparent 55%,#000 56%);mask:radial-gradient(circle,transparent 55%,#000 56%)}
+  .hint{font-size:1.6cqw;color:var(--muted);display:flex;gap:2.4cqw;justify-content:center}
+  .hint b{color:var(--txt);font-weight:600}
+  /* Anillo de emociones */
+  .wheel{position:absolute;inset:0;background:rgba(0,0,0,.72);display:grid;place-items:center}
+  .wheel .c{position:relative;width:46cqw;height:46cqw}
+  .wheel .mid{position:absolute;inset:16cqw;border-radius:50%;background:var(--panel);display:grid;place-items:center;text-align:center;font-size:1.7cqw;color:var(--muted);padding:1cqw}
+  .wheel .e{position:absolute;width:14cqw;height:9cqw;margin:-4.5cqw -7cqw;border-radius:1.2cqw;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:1.8cqw;border:.3cqw solid transparent}
+  .wheel .e span{font-size:3.6cqw}
+  .wheel .e.focus{border-color:var(--focus)}
+  /* Iniciales */
+  .keys{flex:1;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr;gap:1.6cqw}
+  .key{background:var(--card);border-radius:1.2cqw;display:grid;place-items:center;font-size:5cqw;font-weight:700;letter-spacing:.4cqw;border:.3cqw solid transparent;position:relative}
+  .key.focus{border-color:var(--focus)}
+  .magnet{position:absolute;bottom:1cqw;font-size:1.4cqw;color:var(--focus);font-weight:500;letter-spacing:0}
+  /* Agente */
+  .plan{flex:1;display:grid;grid-template-columns:1.3fr 1fr;gap:1.6cqw}
+  .steps{background:var(--card);border-radius:1.2cqw;padding:2cqw;display:flex;flex-direction:column;gap:1.4cqw}
+  .step{display:flex;gap:1.2cqw;align-items:flex-start;font-size:2.3cqw}
+  .step .n{min-width:3.2cqw;height:3.2cqw;border-radius:50%;background:var(--panel);display:grid;place-items:center;font-size:1.8cqw;color:var(--muted)}
+  .bubble{background:#1f3b2d;border-radius:1cqw;padding:1cqw 1.4cqw;font-size:2.2cqw;margin-top:.6cqw}
+  .decide{display:flex;flex-direction:column;gap:1.6cqw}
+  .btn{flex:1;border-radius:1.2cqw;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:3cqw;font-weight:700;background:var(--card);border:.3cqw solid transparent}
+  .btn small{font-size:1.5cqw;color:var(--muted);font-weight:500;margin-top:.6cqw}
+  .btn.go{border-color:var(--ok)}
+  /* Alarma */
+  .alarm{position:absolute;inset:0;background:#2a0b0b;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2cqw;text-align:center}
+  .alarm .big{font-size:7cqw;font-weight:800;color:var(--alarm)}
+  .alarm .sub{font-size:2.6cqw}
+  .timeline{display:flex;gap:1.2cqw;font-size:1.6cqw}
+  .timeline div{padding:.6cqw 1.2cqw;border-radius:2cqw;background:#3a1414;color:#f3c1c1}
+  .timeline .now{background:var(--alarm);color:#1a0000;font-weight:700}
+  .cancel{font-size:1.8cqw;color:var(--muted)}
+  .ack{position:absolute;inset:0;background:#0d2318;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.6cqw;text-align:center}
+  .ack .big{font-size:6.5cqw;font-weight:800;color:var(--ok)}
+  /* LCD físico */
+  .hw{display:flex;gap:24px;flex-wrap:wrap;align-items:center}
+  .lcd{background:#1a3cff;border:10px solid #0b4d2b;border-radius:6px;padding:14px 18px;font-family:"Courier New",monospace;font-size:clamp(16px,3vw,28px);color:#e8f0ff;letter-spacing:2px;line-height:1.3;white-space:pre}
+  .leds{display:flex;gap:12px}
+  .led{width:26px;height:26px;border-radius:50%;opacity:.25}
+  .led.on{opacity:1;box-shadow:0 0 18px currentColor}
+  .lost{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.6cqw;text-align:center;background:var(--bg)}
+  .lost .big{font-size:5cqw;font-weight:700}
+  .lost .sub{font-size:2.4cqw;color:var(--muted)}
+  @media (max-width:640px){ .tv{border-width:5px} }
+</style>
+</head>
+<body>
+
+<h1>WOKI · Mockups para TV (1920×1080)</h1>
+<p class="intro">Usuaria: Marta, ELA media, a 2–2,5 m de una TV de 55". La mirada elige la zona y el clic de ceja (EMG) confirma. Solo las 4 tarjetas se eligen con la mirada; lo demás se hace con gestos. Los números vienen de <code>GUIA-DISENO.md</code>.</p>
+
+<!-- 1. Conversación -->
+<section class="screen">
+  <h2>1 · Conversación (pantalla principal)</h2>
+  <p class="note">Alguien preguntó algo. Claude propone 4 respuestas con tonos distintos y una emoción para cada una. Marta mira una tarjeta: el borde se ilumina y el anillo se llena. La confirma con la ceja. El indicador "escribiendo" avisa a la familia que está respondiendo.</p>
+  <div class="tv"><div class="safe">
+    <div class="status">
+      <div class="pill"><span class="dot ok"></span>Mirada</div>
+      <div class="pill"><span class="dot ok"></span>Ceja · Mandíbula</div>
+      <div class="pill"><span class="dot ok"></span>Alarma armada</div>
+      <div class="spacer"></div><div>21:14</div>
+    </div>
+    <div class="msg">
+      <div class="q">Sofía:</div>
+      <div class="t">"¿Vienes a cenar el domingo?"</div>
+      <div class="typing">● ● ● Marta está escribiendo</div>
+    </div>
+    <div class="grid">
+      <div class="card focus"><div class="ring"></div><div class="emo">🥰</div><div class="ph">¡Obvio! Guárdame del postre de la abuela.</div><div class="tone">cariñosa</div></div>
+      <div class="card"><div class="emo">😐</div><div class="ph">Sí, llego a las 8.</div><div class="tone">breve</div></div>
+      <div class="card"><div class="emo">😏</div><div class="ph">Si cocina tu papá, lo pienso.</div><div class="tone">irónica</div></div>
+      <div class="card"><div class="emo">🙂</div><div class="ph">Este domingo no puedo, ¿el próximo?</div><div class="tone">neutra</div></div>
+    </div>
+    <div class="hint"><span><b>Ceja</b> confirmar</span><span><b>Ceja ×2</b> ninguna sirve</span><span><b>Mandíbula</b> pedir la palabra</span><span><b>Mandíbula ×2</b> reacciones</span></div>
+  </div></div>
+</section>
+
+<!-- 2. Emoción -->
+<section class="screen">
+  <h2>2 · Cambiar la emoción (modelo mixto)</h2>
+  <p class="note">La emoción que propone la IA queda aceptada por defecto. Si Marta sostiene la mirada sobre el emoji (800–1.000 ms), se abre el anillo con 6 opciones. Elige con la mirada y confirma con la ceja. Las emociones difíciles de distinguir en la voz, como triste o enojada, no van en el anillo principal.</p>
+  <div class="tv"><div class="safe" style="filter:blur(.2cqw);opacity:.5">
+    <div class="status"><div class="pill"><span class="dot ok"></span>Mirada</div></div>
+    <div class="msg"><div class="t">"Si cocina tu papá, lo pienso."</div></div>
+    <div class="grid"><div class="card"></div><div class="card"></div><div class="card"></div><div class="card"></div></div>
+  </div>
+  <div class="wheel"><div class="c">
+    <div class="mid">"Si cocina tu papá, lo pienso."<br><br>propuesta: 😏 irónica</div>
+    <div class="e focus" style="left:50%;top:6%"><span>😏</span>irónica</div>
+    <div class="e" style="left:90%;top:28%"><span>😄</span>alegre</div>
+    <div class="e" style="left:90%;top:72%"><span>🥰</span>cariñosa</div>
+    <div class="e" style="left:50%;top:94%"><span>🤫</span>susurro</div>
+    <div class="e" style="left:10%;top:72%"><span>😐</span>seria</div>
+    <div class="e" style="left:10%;top:28%"><span>🤩</span>entusiasta</div>
+  </div></div></div>
+</section>
+
+<!-- 3. Iniciales -->
+<section class="screen">
+  <h2>3 · Iniciales ("ninguna sirve")</h2>
+  <p class="note">Se abre con la ceja doble. Son 6 zonas grandes con letras agrupadas, no un teclado completo. Aquí actúa el cursor que se imanta: Claude predice el grupo más probable y la zona "atrae" la mirada solo si hay un objetivo claro. Con 2 o 3 iniciales, Claude vuelve a proponer 4 frases.</p>
+  <div class="tv"><div class="safe">
+    <div class="status"><div class="pill"><span class="dot ok"></span>Mirada</div><div class="pill"><span class="dot ok"></span>Ceja</div><div class="spacer"></div><div>Iniciales</div></div>
+    <div class="msg"><div class="q">Escribiendo:</div><div class="t">N · M ·</div><div class="typing">Claude: "No me esperen…"</div></div>
+    <div class="keys">
+      <div class="key">A B C D</div>
+      <div class="key">E F G H</div>
+      <div class="key">I J K L</div>
+      <div class="key focus">M N Ñ O<span class="magnet">● imán: probable</span></div>
+      <div class="key">P Q R S</div>
+      <div class="key">T U V Y Z</div>
+    </div>
+    <div class="hint"><span><b>Ceja</b> elegir grupo</span><span><b>Mandíbula sostenida</b> borrar</span><span><b>Ceja ×2</b> ver frases</span></div>
+  </div></div>
+</section>
+
+<!-- 4. Reacciones -->
+<section class="screen">
+  <h2>4 · Reacciones rápidas</h2>
+  <p class="note">Audios pregrabados con su voz, que suenan sin espera. Se abren con la mandíbula doble. Sirven para meterse en la conversación a tiempo: el humor que llega tarde es una de las quejas más repetidas.</p>
+  <div class="tv"><div class="safe">
+    <div class="status"><div class="pill"><span class="dot ok"></span>Mirada</div><div class="spacer"></div><div>Reacciones · 1/3</div></div>
+    <div class="grid" style="margin-top:1cqw">
+      <div class="card focus"><div class="ring"></div><div class="ph" style="font-size:5cqw;text-align:center">😂 jajaja</div></div>
+      <div class="card"><div class="ph" style="font-size:5cqw;text-align:center">😱 ¡no!</div></div>
+      <div class="card"><div class="ph" style="font-size:5cqw;text-align:center">🤔 mmm…</div></div>
+      <div class="card"><div class="ph" style="font-size:5cqw;text-align:center">❤️ te quiero</div></div>
+    </div>
+    <div class="hint"><span><b>Ceja</b> decir</span><span><b>Mirar abajo</b> más reacciones</span><span><b>Mandíbula sostenida</b> volver</span></div>
+  </div></div>
+</section>
+
+<!-- 5. Agente -->
+<section class="screen">
+  <h2>5 · Plan del agente</h2>
+  <p class="note">Marta dio una intención y el agente arma un plan de máximo 3 pasos con todo visible. La ceja aprueba. Como enviar es irreversible, pide una segunda ceja dentro de 3 s. Si no hay respuesta, se cancela: nunca se ejecuta por inacción.</p>
+  <div class="tv"><div class="safe">
+    <div class="status"><div class="pill"><span class="dot ok"></span>Mirada</div><div class="pill"><span class="dot ok"></span>Ceja</div><div class="spacer"></div><div>Agente</div></div>
+    <div class="msg"><div class="q">Intención:</div><div class="t">Responder a Sofía</div></div>
+    <div class="plan">
+      <div class="steps">
+        <div class="step"><div class="n">1</div><div>Abrir WhatsApp → <b>Sofía (hija)</b></div></div>
+        <div class="step"><div class="n">2</div><div>Escribir:<div class="bubble">¡Obvio! Guárdame del postre de la abuela 🥰</div></div></div>
+        <div class="step"><div class="n">3</div><div>Enviar <span style="color:var(--warn)">· irreversible</span></div></div>
+      </div>
+      <div class="decide">
+        <div class="btn go">✓ Enviar<small>Ceja · y otra ceja en 3 s para confirmar</small></div>
+        <div class="btn">✕ Cancelar<small>Mandíbula sostenida · o esperar 10 s</small></div>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- 6. Emergencia -->
+<section class="screen">
+  <h2>6 · Emergencia (ceja, ceja, mandíbula)</h2>
+  <p class="note">Funciona sin mirar la pantalla y también en descanso o de noche. Hay 3 s para cancelar. La alarma no se apaga sola: solo con el llavero RFID de la cuidadora o desde su teléfono.</p>
+  <div class="tv"><div class="alarm">
+    <div class="big">AVISANDO A CAMILA</div>
+    <div class="sub">Teléfono · luz roja · bandera arriba</div>
+    <div class="timeline"><div class="now">0 s · alarma + teléfono</div><div>30 s · más volumen + familia</div><div>90 s · contacto 2</div></div>
+    <div class="cancel">Cualquier gesto en 3 s cancela · 00:07</div>
+  </div></div>
+</section>
+
+<section class="screen">
+  <h2>6b · Confirmación de la cuidadora</h2>
+  <p class="note">Camila acerca el llavero al lector. La TV le cuenta a Marta que viene alguien y cuánto tardó. El servo baja la bandera a media altura y el segundo toque la baja del todo ("resuelto").</p>
+  <div class="tv"><div class="ack">
+    <div class="big">CAMILA VIENE</div>
+    <div style="font-size:2.6cqw">Respondió en 38 s</div>
+    <div style="font-size:1.8cqw;color:var(--muted)">Segundo toque del llavero = resuelto</div>
+  </div></div>
+</section>
+
+<!-- 7. Señal perdida -->
+<section class="screen">
+  <h2>7 · No te veo (cambio automático a EMG)</h2>
+  <p class="note">Pasa con poca luz, con llanto o con párpados caídos. Tras 1,5 s sin ver la cara, la pantalla lo dice con calma y cambia a selección por clic: el sistema recorre las 4 tarjetas y la ceja elige. Cuando la cara vuelve, espera 1,5 s antes de aceptar clics.</p>
+  <div class="tv"><div class="lost">
+    <div class="big">No te veo 👀</div>
+    <div class="sub">Sigue con la ceja: las tarjetas se iluminan una por una</div>
+    <div class="status" style="justify-content:center"><div class="pill"><span class="dot warn"></span>Mirada: sin cara</div><div class="pill"><span class="dot ok"></span>EMG activo</div></div>
+  </div></div>
+</section>
+
+<!-- 8. Hardware -->
+<section class="screen">
+  <h2>8 · Junto a la cama: el busca de la cuidadora</h2>
+  <p class="note">LCD 16×2 y LEDs conectados al Uno. Funcionan aunque nadie mire la TV. Si el Mac deja de mandar el heartbeat por 6 s, el LCD muestra "SIN CONEXION".</p>
+  <div class="hw">
+    <div class="lcd">EMERGENCIA 0:07
+FALTA CONFIRMAR</div>
+    <div class="leds"><div class="led on" style="background:#ff5d5d;color:#ff5d5d"></div><div class="led" style="background:#f0b54a"></div><div class="led" style="background:#5fd38d"></div></div>
+    <div class="lcd">CAMILA VIENE
+RESPONDIO 38s</div>
+  </div>
+</section>
+
+</body>
+</html>
